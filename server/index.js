@@ -278,6 +278,40 @@ app.get('/api/providers/earnings', async (req, res) => {
   return res.json({ from, to, rides: completed.length, fare, platformFees, totalCollected: fare + platformFees, providerEarnings: fare, rydexRevenue: platformFees })
 })
 
+app.post('/api/partners/apply', async (req, res) => {
+  const { companyName, contactName, email, phone, website, cities = [], rideTypes = [], integrationType = 'BOOKING_LINK', notes = '' } = req.body || {}
+  if (!String(companyName || '').trim() || !String(contactName || '').trim() || !String(email || '').trim()) {
+    return res.status(400).json({ error: 'Company name, contact name and email are required.' })
+  }
+  if (!prisma) return res.status(503).json({ error: 'Partner applications require the database.' })
+  try {
+    const application = await prisma.partnerApplication.create({
+      data: { companyName: String(companyName).trim(), contactName: String(contactName).trim(), email: String(email).trim().toLowerCase(), phone: phone || null, website: website || null, cities, rideTypes, integrationType, notes: notes || null },
+    })
+    res.status(201).json({ application: { id: application.id, status: application.status } })
+  } catch {
+    res.status(500).json({ error: 'Unable to submit partner application.' })
+  }
+})
+
+app.get('/api/admin/partner-applications', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.json({ applications: [] })
+  const applications = await prisma.partnerApplication.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json({ applications })
+})
+
+app.patch('/api/admin/partner-applications/:id', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const status = String(req.body?.status || '').toUpperCase()
+  if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Invalid application status.' })
+  const application = await prisma.partnerApplication.update({ where: { id: req.params.id }, data: { status } })
+  res.json({ application })
+})
+
 app.get('/api/admin/providers', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
