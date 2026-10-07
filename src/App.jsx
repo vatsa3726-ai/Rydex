@@ -50,6 +50,8 @@ function App() {
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
   const [adminData, setAdminData] = useState(null)
   const [adminLoading, setAdminLoading] = useState(false)
+  const [adminProviders, setAdminProviders] = useState([])
+  const [providerForm, setProviderForm] = useState({ name: '', code: '', integrationType: 'DEMO', bookingUrl: '', cities: '', rideTypes: 'auto,bike,cab,premium', active: true })
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -130,9 +132,47 @@ function App() {
     }
   }
 
+  const loadAdminProviders = async () => {
+    if (!adminToken) return
+    const response = await fetch(`${API_URL}/api/admin/providers`, { headers: { 'X-Admin-Token': adminToken } })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to load providers.')
+    setAdminProviders(data.providers || [])
+  }
+
+  const saveAdminProvider = async () => {
+    if (!adminToken || !providerForm.name.trim() || !providerForm.code.trim()) return
+    const response = await fetch(`${API_URL}/api/admin/providers`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...providerForm,
+        cities: providerForm.cities.split(',').map((item) => item.trim()).filter(Boolean),
+        rideTypes: providerForm.rideTypes.split(',').map((item) => item.trim()).filter(Boolean),
+        bookingUrl: providerForm.bookingUrl.trim() || null,
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to save provider.')
+    setProviderForm({ name: '', code: '', integrationType: 'DEMO', bookingUrl: '', cities: '', rideTypes: 'auto,bike,cab,premium', active: true })
+    setApiNotice('Provider saved successfully.')
+    await loadAdminProviders()
+  }
+
+  const toggleAdminProvider = async (provider) => {
+    const response = await fetch(`${API_URL}/api/admin/providers/${encodeURIComponent(provider.code)}`, {
+      method: 'PATCH',
+      headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: !provider.active }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
+    await loadAdminProviders()
+  }
+
   const openAdminDashboard = async () => {
     setAdminOpen(true)
-    if (adminToken) await loadAdminDashboard()
+    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders() }
   }
 
   const openProviderPortal = async () => {
@@ -892,6 +932,19 @@ function App() {
                   <div><span>Collected</span><strong>₹{adminData.revenue?.total ?? 0}</strong><small>Completed rides</small></div>
                   <div><span>Ride fares</span><strong>₹{adminData.revenue?.fare ?? 0}</strong><small>Provider fares</small></div>
                   <div><span>Rydex revenue</span><strong>₹{adminData.revenue?.platformFee ?? 0}</strong><small>Platform fees</small></div>
+                </div>
+                <div className="provider-section">
+                  <div className="queue-title"><span>PROVIDER NETWORK</span><button className="refresh-btn" onClick={loadAdminProviders}>Refresh</button></div>
+                  <div className="admin-provider-form">
+                    <input placeholder="Company name" value={providerForm.name} onChange={(e) => setProviderForm({ ...providerForm, name: e.target.value })} />
+                    <input placeholder="Provider code" value={providerForm.code} onChange={(e) => setProviderForm({ ...providerForm, code: e.target.value })} />
+                    <select value={providerForm.integrationType} onChange={(e) => setProviderForm({ ...providerForm, integrationType: e.target.value })}><option>DEMO</option><option>BOOKING_LINK</option><option>API</option></select>
+                    <input placeholder="Official booking URL" value={providerForm.bookingUrl} onChange={(e) => setProviderForm({ ...providerForm, bookingUrl: e.target.value })} />
+                    <input placeholder="Cities, e.g. Bengaluru,Mysuru" value={providerForm.cities} onChange={(e) => setProviderForm({ ...providerForm, cities: e.target.value })} />
+                    <input placeholder="Ride types" value={providerForm.rideTypes} onChange={(e) => setProviderForm({ ...providerForm, rideTypes: e.target.value })} />
+                    <button className="pay-btn" onClick={saveAdminProvider}>Add provider +</button>
+                  </div>
+                  <div className="admin-provider-list">{adminProviders.map((provider) => <article className="history-card" key={provider.code}><div className="history-top"><strong>{provider.name}</strong><span className={provider.active ? 'status-pill status-completed' : 'status-pill status-cancelled'}>{provider.active ? 'ACTIVE' : 'OFF'}</span></div><div className="provider-request-meta"><span>{provider.code}</span><span>{provider.integrationType}</span></div><small>{provider.cities?.join(', ') || 'All cities'} · {provider.rideTypes?.join(', ') || 'All ride types'}</small><button className="refresh-btn" onClick={() => toggleAdminProvider(provider)}>{provider.active ? 'Deactivate' : 'Activate'}</button></article>)}</div>
                 </div>
                 <div className="provider-section">
                   <div className="queue-title"><span>RECENT BOOKINGS</span><button className="refresh-btn" onClick={loadAdminDashboard}>Refresh</button></div>
