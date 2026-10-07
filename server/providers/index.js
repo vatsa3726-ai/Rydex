@@ -123,7 +123,10 @@ function createApiAdapter(provider) {
         signal: AbortSignal.timeout(10000),
       })
       if (!response.ok) throw new Error(`Provider quote API returned HTTP ${response.status}.`)
-      const payload = await response.json()
+      const body = await response.text()
+      if (body.length > 1_000_000) throw new Error('Provider quote response is too large.')
+      let payload
+      try { payload = JSON.parse(body) } catch { throw new Error('Provider quote response must be valid JSON.') }
       const quotes = Array.isArray(payload) ? payload : payload.quotes
       if (!Array.isArray(quotes)) throw new Error('Provider quote response must contain a quotes array.')
       return quotes.map((quote) => normalizeProviderQuote(quote, provider, input)).filter(Boolean)
@@ -168,12 +171,12 @@ export function getProviderAdapter(providerCode, providerList = []) {
 
 export async function getRideQuotes(input, configuredProviders = null) {
   const source = configuredProviders?.length ? configuredProviders : demoProviders
-  const results = await Promise.all(source.map(async (provider) => {
+  const results = await Promise.allSettled(source.map(async (provider) => {
     const adapter = createConfiguredAdapter(provider)
     const quotes = await adapter.searchQuotes(input)
     return quotes.map((quote) => normalizeProviderQuote(quote, provider, input)).filter(Boolean)
   }))
-  return results.flat()
+  return results.filter((result) => result.status === 'fulfilled').flatMap((result) => result.value)
 }
 
 export function getProviderCatalog(providerList = null) {
