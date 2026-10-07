@@ -46,3 +46,5 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 
 Rydex production uses the redirect-first model: Rydex compares authorized provider quotes and hands the user to the selected provider. Direct Rydex booking, Rydex payment, and Rydex driver operations remain development-only.
 
+
+Security hardening PR #44 includes automated validation before merge.
