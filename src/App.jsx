@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import RydexMap from './RydexMap.jsx'
+import { trackAnalytics } from './analytics.js'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
 
@@ -483,6 +484,9 @@ function App() {
       if (!response.ok) throw new Error('API request failed')
       const data = await response.json()
       setRides(data.rides)
+      const city = pickup.split(',').slice(-2).join(',').trim() || null
+      trackAnalytics(API_URL, 'SEARCH', { pickup, destination, city, metadata: { quoteCount: data.rides?.length || 0 } })
+      trackAnalytics(API_URL, 'RESULTS_SHOWN', { pickup, destination, city, metadata: { quoteCount: data.rides?.length || 0 } })
     } catch {
       setRides(demoRides)
       setApiNotice('Demo mode: start the Rydex API on port 4000 for live backend data.')
@@ -641,6 +645,15 @@ function App() {
 
   const handleProviderHandoff = () => {
     if (!selected) return
+    const city = pickup.split(',').slice(-2).join(',').trim() || null
+    trackAnalytics(API_URL, 'HANDOFF', {
+      providerCode: selected.providerCode,
+      rideType: selected.rideType || selected.id,
+      pickup,
+      destination,
+      city,
+      metadata: { bookingUrlConfigured: Boolean(selected.bookingUrl), fare: selected.fare },
+    })
     if (selected.bookingUrl) {
       window.open(selected.bookingUrl, '_blank', 'noopener,noreferrer')
       setApiNotice(`Opening ${selected.provider} to complete your ride.`)
