@@ -590,19 +590,25 @@ app.put('/api/admin/providers/:code/connection', async (req, res) => {
   if (!provider) return res.status(404).json({ error: 'Provider not found.' })
 
   const current = await prisma.providerConnection.findUnique({ where: { providerId: provider.id } })
-  const data = {
-    apiBaseUrl: req.body?.apiBaseUrl ? String(req.body.apiBaseUrl).trim() : null,
-    apiKey: req.body?.apiKey ? String(req.body.apiKey).trim() : current?.apiKey || null,
-    apiSecret: req.body?.apiSecret ? String(req.body.apiSecret).trim() : current?.apiSecret || null,
-    status: 'CONFIGURED',
-    lastError: null,
+  let apiBaseUrl = req.body?.apiBaseUrl ? String(req.body.apiBaseUrl).trim() : current?.apiBaseUrl || null
+  try {
+    if (apiBaseUrl) apiBaseUrl = validateProviderUrl(apiBaseUrl).toString()
+  } catch (error) {
+    return res.status(400).json({ error: error.message })
   }
-  const connection = await prisma.providerConnection.upsert({
-    where: { providerId: provider.id },
-    update: data,
-    create: { providerId: provider.id, ...data },
-  })
-  res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
+  try {
+    const apiKey = req.body?.apiKey ? encryptSecret(String(req.body.apiKey).trim()) : current?.apiKey || null
+    const apiSecret = req.body?.apiSecret ? encryptSecret(String(req.body.apiSecret).trim()) : current?.apiSecret || null
+    const data = { apiBaseUrl, apiKey, apiSecret, status: 'CONFIGURED', lastError: null }
+    const connection = await prisma.providerConnection.upsert({
+      where: { providerId: provider.id },
+      update: data,
+      create: { providerId: provider.id, ...data },
+    })
+    return res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Unable to securely save provider credentials.' })
+  }
 })
 
 app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
@@ -615,7 +621,16 @@ app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
 
   const startedAt = Date.now()
   try {
-    const response = await fetch(provider.connection.apiBaseUrl, { method: 'GET', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) })
+    validateProviderUrl(provider.connection.apiBaseUrl)
+    const response = await fetch(provider.connection.apiBaseUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(provider.connection.apiKey ? { 'X-API-Key': decryptSecret(provider.connection.apiKey) } : {}),
+        ...(provider.connection.apiSecret ? { 'X-API-Secret': decryptSecret(provider.connection.apiSecret) } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    })
     const status = response.ok ? 'CONNECTED' : 'ERROR'
     const errorMessage = response.ok ? null : `Provider returned HTTP ${response.status}.`
     await prisma.providerConnection.update({ where: { providerId: provider.id }, data: { status, lastTestedAt: new Date(), lastError: errorMessage } })
