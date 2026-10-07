@@ -225,6 +225,13 @@ app.post('/api/payments/verify', async (req, res) => {
   res.json({ ok: true, booking })
 })
 
+app.use('/api/providers', (req, res, next) => {
+  const expected = process.env.PROVIDER_API_TOKEN
+  if (!expected) return next()
+  if (String(req.headers['x-provider-token'] || '') !== expected) return res.status(401).json({ error: 'Provider access denied.' })
+  next()
+})
+
 app.get('/api/providers/earnings', async (req, res) => {
   const providerCode = String(req.query.providerCode || '').trim()
   const from = req.query.from ? new Date(String(req.query.from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
