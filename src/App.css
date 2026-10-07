@@ -245,3 +245,12 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
 .availability-dot.available{background:rgba(43,218,142,.12);color:#63e5ac}.availability-dot.busy{background:rgba(255,194,61,.12);color:#ffd36b}
 @media(max-width:850px){.topbar{padding:0 16px}.hero{padding-top:48px}.hero h1{font-size:50px}}
 @media(max-width:600px){.topbar{height:70px}.brand{font-size:18px}.hero h1{font-size:43px}.hero-copy>p{font-size:15px}.search-card{border-radius:20px}}
+
+@media(max-width:600px){
+  .topbar nav>a,.topbar nav .nav-link-btn{display:none}
+  .topbar nav{gap:6px}
+  .login-btn{padding:10px 14px}
+  .location-field{flex-wrap:wrap}
+  .location-field>div{min-width:0}
+  .location-btn{width:100%;margin-left:35px}
+}
