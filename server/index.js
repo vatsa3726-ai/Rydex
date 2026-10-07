@@ -152,6 +152,17 @@ app.post('/api/rides/search', async (req, res) => {
     ? await getRouteEstimate({ pickupLat, pickupLng, destinationLat, destinationLng })
     : null
 
+  let configuredProviders = null
+  if (prisma) {
+    try {
+      configuredProviders = await prisma.provider.findMany({
+        where: { active: true },
+        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true },
+        orderBy: { name: 'asc' },
+      })
+    } catch {}
+  }
+
   const quotes = await getRideQuotes({
     pickup,
     destination,
@@ -159,7 +170,7 @@ app.post('/api/rides/search', async (req, res) => {
     coordinates: hasCoordinates
       ? { pickupLat, pickupLng, destinationLat, destinationLng }
       : null,
-  })
+  }, configuredProviders?.length ? configuredProviders : null)
   res.json({
     pickup,
     destination,
