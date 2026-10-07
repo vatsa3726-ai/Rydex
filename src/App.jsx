@@ -791,7 +791,7 @@ function App() {
           <section className="feature-strip" id="how">
             <div><span>01</span><h3>Search once</h3><p>Enter your route once instead of opening multiple ride apps.</p></div>
             <div><span>02</span><h3>Compare</h3><p>See vehicle types, pickup time and total price side by side.</p></div>
-            <div><span>03</span><h3>Book</h3><p>Use one Rydex checkout with a simple ₹8 platform fee.</p></div>
+            <div><span>03</span><h3>Book</h3><p>Choose the provider you want, then continue to their official booking flow.</p></div>
           </section>
         )}
       </main>
@@ -799,7 +799,7 @@ function App() {
       <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
         <button className="mobile-nav-item active" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><span>⌂</span><small>Home</small></button>
         <button className="mobile-nav-item" onClick={() => user ? loadBookings() : setAuthOpen(true)}><span>▣</span><small>Bookings</small></button>
-        <button className="mobile-nav-item" onClick={() => { setProviderPortalOpen(true); loadProviderPortal() }}><span>◆</span><small>Partners</small></button>
+        <button className="mobile-nav-item" onClick={() => setProviderPortalOpen(true)}><span>◆</span><small>Partners</small></button>
         <button className="mobile-nav-item" onClick={() => user ? signOut() : setAuthOpen(true)}><span>●</span><small>{user ? 'Sign out' : 'Account'}</small></button>
       </nav>
 
@@ -913,45 +913,36 @@ function App() {
         <div className="auth-backdrop" role="presentation" onClick={() => setProviderPortalOpen(false)}>
           <section className="bookings-modal provider-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="bookings-header">
-              <div><span className="eyebrow">RYDEX PARTNER</span><h2>Provider Portal</h2></div>
+              <div><span className="eyebrow">RYDEX PARTNER NETWORK</span><h2>Become a Rydex Provider</h2></div>
               <button className="auth-close" onClick={() => setProviderPortalOpen(false)}>×</button>
             </div>
-            <div className="provider-access-row">
-              <div><label>Partner code</label><input value={providerCode} onChange={(event) => setProviderCode(event.target.value)} placeholder="rydex-demo" /></div>
-              <div><label>Access token</label><input type="password" value={providerToken} onChange={(event) => { setProviderToken(event.target.value); sessionStorage.setItem('rydexProviderToken', event.target.value) }} placeholder="Optional in demo" /></div>
-              <button className="refresh-btn provider-load-btn" onClick={loadProviderPortal}>Load partner data</button>
+            <div className="partner-hero">
+              <div className="partner-icon">◆</div>
+              <h3>Bring your rides to more customers.</h3>
+              <p>Rydex compares authorized ride providers side by side. You keep the customer relationship, booking flow and payment. Rydex sends customers to you.</p>
             </div>
             <div className="provider-kpis">
-              <div><span>Drivers</span><strong>{providerDrivers.length}</strong><small>{providerDrivers.filter((driver) => driver.available).length} available</small></div>
-              <div><span>Ride requests</span><strong>{providerQueue.length}</strong><small>Paid & waiting</small></div>
-              <div><span>Active drivers</span><strong>{providerDrivers.filter((driver) => !driver.available).length}</strong><small>Currently assigned</small></div>
-            </div>
-            <div className="provider-kpis">
-              <div><span>Completed rides</span><strong>{providerEarnings?.rides ?? '—'}</strong><small>Selected period</small></div>
-              <div><span>Provider earnings</span><strong>₹{providerEarnings?.providerEarnings ?? '—'}</strong><small>Ride fares</small></div>
-              <div><span>Rydex fee</span><strong>₹{providerEarnings?.rydexRevenue ?? '—'}</strong><small>Platform revenue</small></div>
+              <div><span>Comparison</span><strong>✓</strong><small>Prices & ETAs</small></div>
+              <div><span>Customer</span><strong>→</strong><small>Sent to provider</small></div>
+              <div><span>Booking</span><strong>API</strong><small>Authorized only</small></div>
             </div>
             <div className="provider-section">
-              <div className="queue-title"><span>DRIVER FLEET</span><button className="refresh-btn" onClick={loadProviderPortal}>{providerLoading ? 'Loading…' : 'Refresh'}</button></div>
-              {providerDrivers.length ? <div className="provider-driver-list">{providerDrivers.map((driver) => (
-                <article className="provider-driver" key={driver.id}>
-                  <div><strong>{driver.name}</strong><span>{driver.vehicleType} · {driver.vehicleNumber || 'No vehicle number'}</span></div>
-                  <span className={`availability-dot ${driver.available ? 'available' : 'busy'}`}>{driver.available ? 'Available' : 'On ride'}</span>
-                </article>
-              ))}</div> : <div className="empty-history"><h3>No drivers yet</h3><p>Add your first driver from the driver console.</p></div>}
+              <div className="queue-title"><span>INTEGRATION OPTIONS</span></div>
+              <div className="partner-options">
+                <article><strong>🔗 Official booking link</strong><p>Send customers directly to your official booking or deep-link flow.</p></article>
+                <article><strong>⚡ Authorized API</strong><p>Share quotes, ETAs and ride types through an approved partner integration.</p></article>
+                <article><strong>📊 Partner analytics</strong><p>Track comparison visibility, provider selections and handoff performance.</p></article>
+              </div>
             </div>
             <div className="provider-section">
-              <div className="queue-title"><span>INCOMING PAID RIDES</span><button className="refresh-btn" onClick={loadProviderPortal}>Refresh</button></div>
-              {providerQueue.length ? <div className="booking-list">{providerQueue.map((item) => (
-                <article className="history-card" key={item.id}>
-                  <div className="history-top"><strong>{item.rideName}</strong><strong>₹{item.total}</strong></div>
-                  <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
-                  <div className="provider-request-meta"><span>Booking {item.id}</span><span>{item.distanceKm ? `${Number(item.distanceKm).toFixed(1)} km` : 'Route pending'}</span></div>
-                  <small>Dispatch this request to an available driver from the Driver Console.</small>
-                </article>
-              ))}</div> : <div className="empty-history"><h3>No pending requests</h3><p>Paid customer bookings waiting for dispatch will appear here.</p></div>}
+              <div className="queue-title"><span>DEMO PARTNER CONFIGURATION</span></div>
+              <div className="provider-access-row">
+                <div><label>Partner code</label><input value={providerCode} onChange={(event) => setProviderCode(event.target.value)} placeholder="your-company" /></div>
+                <div><label>Integration status</label><input value="Not connected" readOnly /></div>
+              </div>
+              <p className="provider-footer-note">No provider API or private app endpoint is accessed without authorization. Once a partnership is approved, we can connect the provider's official API or booking URL here.</p>
             </div>
-            <div className="provider-footer-note">Provider earnings are calculated from completed rides. Settlement execution can be connected to your chosen payout workflow after commercial onboarding.</div>
+            <button className="pay-btn" onClick={() => setApiNotice('Partner onboarding is ready. Connect an authorized provider API or official booking link to activate a provider.')}>Start partner onboarding →</button>
           </section>
         </div>
       )}
