@@ -333,11 +333,22 @@ function App() {
   }
 
   const sortedRides = useMemo(() => {
-    const list = [...rides]
+    const list = [...rides].filter((ride) => rideFilter === 'all' || ride.rideType === rideFilter || ride.id === rideFilter)
     if (sort === 'price') return list.sort((a, b) => a.fare - b.fare)
-    if (sort === 'eta') return list.sort((a, b) => a.eta - b.eta)
+    if (sort === 'eta') return list.sort((a, b) => a.pickupEta - b.pickupEta)
     return list
-  }, [rides, sort])
+  }, [rides, sort, rideFilter])
+
+  const comparisonGroups = useMemo(() => {
+    const groups = ['auto', 'bike', 'cab', 'premium']
+      .map((type) => ({ type, rides: sortedRides.filter((ride) => ride.rideType === type) }))
+      .filter((group) => group.rides.length)
+    return groups.map((group) => ({
+      ...group,
+      cheapest: group.rides.reduce((best, ride) => ride.fare < best.fare ? ride : best, group.rides[0]),
+      fastest: group.rides.reduce((best, ride) => ride.pickupEta < best.pickupEta ? ride : best, group.rides[0]),
+    }))
+  }, [sortedRides])
 
   const resolvePlace = async (query) => {
     const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
@@ -660,26 +671,31 @@ function App() {
             </div>
 
             <div className="results-grid">
-              <div className="ride-list">
-                {sortedRides.filter((ride) => rideFilter === 'all' || ride.id === rideFilter).map((ride, index) => (
-                  <article className={`ride-card ${selected?.id === ride.id ? 'selected' : ''}`} key={ride.id}>
-                    <div className="ride-icon">{ride.icon}</div>
-                    <div className="ride-main">
-                      <div className="ride-title">
-                        <h3>{ride.name}</h3>
-                        <span className="provider-badge">{ride.provider}</span>
-                        {index === 0 && <span className="best-badge">BEST VALUE</span>}
-                      </div>
-                      <p>{ride.provider} · {ride.seats} seats · Pickup in {ride.pickupEta || ride.eta} min · Trip {ride.durationMin || '—'} min</p>
+              <div className="comparison-list">
+                {comparisonGroups.map((group) => (
+                  <section className="comparison-group" key={group.type}>
+                    <div className="comparison-group-head">
+                      <div><span className="ride-category">{group.rides[0].icon}</span><div><h3>{group.rides[0].name}</h3><small>{group.rides.length} provider options</small></div></div>
+                      <span className="comparison-hint">Compare providers</span>
                     </div>
-                    <div className="ride-price">
-                      <strong>₹{ride.fare}</strong>
-                      <span>provider price{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span>
+                    <div className="ride-list">
+                      {group.rides.map((ride) => {
+                        const badges = []
+                        if (ride.id === group.cheapest.id) badges.push('CHEAPEST')
+                        if (ride.id === group.fastest.id) badges.push('FASTEST')
+                        if (ride.id === group.cheapest.id && ride.id === group.fastest.id) badges.push('BEST')
+                        return <article className={`ride-card ${selected?.id === ride.id ? 'selected' : ''}`} key={ride.id}>
+                          <div className="ride-icon">{ride.icon}</div>
+                          <div className="ride-main">
+                            <div className="ride-title"><h3>{ride.provider}</h3><span className="provider-badge">{ride.name}</span>{badges.map((badge) => <span className="best-badge" key={badge}>{badge}</span>)}</div>
+                            <p>{ride.seats} seats · Pickup in {ride.pickupEta} min · Trip {ride.durationMin || '—'} min</p>
+                          </div>
+                          <div className="ride-price"><strong>₹{ride.fare}</strong><span>provider price{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span></div>
+                          <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>{selected?.id === ride.id ? 'Selected' : 'Choose'}</button>
+                        </article>
+                      })}
                     </div>
-                    <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>
-                      {selected?.id === ride.id ? 'Selected' : 'Select'}
-                    </button>
-                  </article>
+                  </section>
                 ))}
               </div>
 
