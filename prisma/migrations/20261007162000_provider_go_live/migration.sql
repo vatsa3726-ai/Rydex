@@ -1,0 +1,3 @@
+ALTER TABLE "Provider" ADD COLUMN "liveApproved" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Provider" ADD COLUMN "liveApprovedAt" TIMESTAMP(3);
+ALTER TABLE "Provider" ADD COLUMN "liveError" TEXT;

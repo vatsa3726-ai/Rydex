@@ -139,7 +139,7 @@ function buildAuthHeaders(connection) {
 function createConfiguredAdapter(provider) {
   const type = String(provider.integrationType || 'DEMO').toUpperCase()
 
-  if (type === 'API' && provider.connection?.status === 'CONNECTED') {
+  if (type === 'API' && provider.liveApproved && provider.connection?.status === 'CONNECTED') {
     return createApiAdapter(provider)
   }
 

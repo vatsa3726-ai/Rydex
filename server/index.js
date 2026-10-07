@@ -157,7 +157,7 @@ app.post('/api/rides/search', async (req, res) => {
     try {
       configuredProviders = await prisma.provider.findMany({
         where: { active: true },
-        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true, connection: { select: { apiBaseUrl: true, apiKey: true, apiSecret: true, status: true } } },
+        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true, liveApproved: true, connection: { select: { apiBaseUrl: true, apiKey: true, apiSecret: true, status: true } } },
         orderBy: { name: 'asc' },
       })
     } catch {}
@@ -365,6 +365,38 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
     await prisma.partnerApplication.update({ where: { id: application.id }, data: { providerCode: provider.code } })
   }
   res.json({ application, provider })
+})
+
+app.post('/api/admin/providers/:code/go-live', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+
+  const provider = await prisma.provider.findUnique({ where: { code: req.params.code }, include: { connection: true } })
+  if (!provider) return res.status(404).json({ error: 'Provider not found.' })
+
+  const checks = {
+    apiConfigured: Boolean(provider.connection?.apiBaseUrl),
+    connectionHealthy: provider.connection?.status === 'CONNECTED',
+    apiIntegration: String(provider.integrationType).toUpperCase() === 'API',
+  }
+  const passed = Object.values(checks).every(Boolean)
+
+  const updated = await prisma.provider.update({
+    where: { id: provider.id },
+    data: {
+      liveApproved: passed,
+      liveApprovedAt: passed ? new Date() : null,
+      liveError: passed ? null : 'Provider must have an API integration with a successful connection test before going live.',
+    },
+  })
+
+  res.status(passed ? 200 : 409).json({
+    ok: passed,
+    liveApproved: updated.liveApproved,
+    checks,
+    error: updated.liveError,
+  })
 })
 
 app.post('/api/admin/providers/:code/test-quote', async (req, res) => {
