@@ -1,4 +1,5 @@
 import { calculateFare, getRideRules } from '../routing.js'
+import { decryptSecret, validateProviderUrl } from '../security.js'
 
 export const rideTypes = [
   { id: 'auto', icon: '🛺', name: 'Auto', seats: '1–3' },
@@ -97,6 +98,7 @@ function createApiAdapter(provider) {
     ...provider,
     async testConnection() {
       if (!connection?.apiBaseUrl) return { ok: false, status: 'NOT_CONFIGURED', message: 'API base URL is not configured.' }
+      validateProviderUrl(connection.apiBaseUrl)
       const response = await fetch(connection.apiBaseUrl, {
         method: 'GET',
         headers: buildAuthHeaders(connection),
@@ -106,7 +108,7 @@ function createApiAdapter(provider) {
     },
     async searchQuotes(input) {
       if (!connection?.apiBaseUrl) return []
-      const endpoint = new URL(connection.apiBaseUrl)
+      const endpoint = validateProviderUrl(connection.apiBaseUrl)
       endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/quotes'
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -131,8 +133,8 @@ function createApiAdapter(provider) {
 
 function buildAuthHeaders(connection) {
   const headers = { Accept: 'application/json' }
-  if (connection.apiKey) headers['X-API-Key'] = connection.apiKey
-  if (connection.apiSecret) headers['X-API-Secret'] = connection.apiSecret
+  if (connection.apiKey) headers['X-API-Key'] = decryptSecret(connection.apiKey)
+  if (connection.apiSecret) headers['X-API-Secret'] = decryptSecret(connection.apiSecret)
   return headers
 }
 
