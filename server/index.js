@@ -457,6 +457,7 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Invalid application status.' })
   const application = await prisma.partnerApplication.update({ where: { id: req.params.id }, data: { status } })
   let provider = null
+  let temporaryPassword = null
   if (status === 'APPROVED') {
     const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
     let code = baseCode
@@ -473,9 +474,13 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
         bookingUrl: null,
       },
     })
-    await prisma.partnerApplication.update({ where: { id: application.id }, data: { providerCode: provider.code } })
+    temporaryPassword = crypto.randomBytes(18).toString('base64url')
+    await prisma.partnerApplication.update({
+      where: { id: application.id },
+      data: { providerCode: provider.code, partnerPasswordHash: hashPassword(temporaryPassword) },
+    })
   }
-  res.json({ application, provider })
+  res.json({ application, provider, ...(temporaryPassword ? { temporaryPassword } : {}) })
 })
 
 app.post('/api/admin/providers/:code/go-live', async (req, res) => {
