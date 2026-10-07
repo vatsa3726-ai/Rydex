@@ -1323,10 +1323,27 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
-const server = app.listen(PORT, () => {
-  console.log(`Rydex API running on http://localhost:${PORT}`)
-  console.log(`Database: ${prisma ? 'PostgreSQL configured' : 'memory fallback'}`)
-})
+async function startServer() {
+  if (process.env.NODE_ENV === 'production' && !process.env.PROVIDER_CREDENTIAL_KEY) {
+    throw new Error('PROVIDER_CREDENTIAL_KEY must be configured in production.')
+  }
+  if (prisma && process.env.PROVIDER_CREDENTIAL_KEY) {
+    const connections = await prisma.providerConnection.findMany({ select: { id: true, apiKey: true, apiSecret: true } })
+    for (const connection of connections) {
+      const apiKey = connection.apiKey && !String(connection.apiKey).startsWith('enc:v1:') ? encryptSecret(connection.apiKey) : connection.apiKey
+      const apiSecret = connection.apiSecret && !String(connection.apiSecret).startsWith('enc:v1:') ? encryptSecret(connection.apiSecret) : connection.apiSecret
+      if (apiKey !== connection.apiKey || apiSecret !== connection.apiSecret) {
+        await prisma.providerConnection.update({ where: { id: connection.id }, data: { apiKey, apiSecret } })
+      }
+    }
+  }
+  return app.listen(PORT, () => {
+    console.log(`Rydex API running on http://localhost:${PORT}`)
+    console.log(`Database: ${prisma ? 'PostgreSQL configured' : 'memory fallback'}`)
+  })
+}
+
+const server = await startServer()
 
 const shutdown = async () => {
   server.close(async () => {
