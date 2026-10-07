@@ -20,6 +20,7 @@ function App() {
   const [landmarkQuery, setLandmarkQuery] = useState('')
   const [searched, setSearched] = useState(false)
   const [sort, setSort] = useState('recommended')
+  const [rideFilter, setRideFilter] = useState('all')
   const [rides, setRides] = useState(demoRides)
   const [selected, setSelected] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -619,13 +620,20 @@ function App() {
                 <span className="eyebrow">RIDE OPTIONS</span>
                 <h2>{pickup} <span>→</span> {destination}</h2>
               </div>
-              <div className="sort-control">
+              <div className="results-tools">
+                <div className="ride-filters" aria-label="Ride type filters">
+                  {[['all','All'],['auto','Auto'],['bike','Bike'],['cab','Cab'],['premium','Premium']].map(([value,label]) => (
+                    <button key={value} className={rideFilter === value ? 'filter-chip active' : 'filter-chip'} onClick={() => setRideFilter(value)}>{label}</button>
+                  ))}
+                </div>
+                <div className="sort-control">
                 <label>Sort</label>
                 <select value={sort} onChange={(e) => setSort(e.target.value)}>
                   <option value="recommended">Recommended</option>
                   <option value="price">Lowest price</option>
                   <option value="eta">Fastest pickup</option>
                 </select>
+                </div>
               </div>
             </div>
 
@@ -643,7 +651,7 @@ function App() {
 
             <div className="results-grid">
               <div className="ride-list">
-                {sortedRides.map((ride, index) => (
+                {sortedRides.filter((ride) => rideFilter === 'all' || ride.id === rideFilter).map((ride, index) => (
                   <article className={`ride-card ${selected?.id === ride.id ? 'selected' : ''}`} key={ride.id}>
                     <div className="ride-icon">{ride.icon}</div>
                     <div className="ride-main">
@@ -760,6 +768,13 @@ function App() {
           </section>
         )}
       </main>
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        <button className="mobile-nav-item active" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><span>⌂</span><small>Home</small></button>
+        <button className="mobile-nav-item" onClick={() => user ? loadBookings() : setAuthOpen(true)}><span>▣</span><small>Bookings</small></button>
+        <button className="mobile-nav-item" onClick={() => { setProviderPortalOpen(true); loadProviderPortal() }}><span>◆</span><small>Partners</small></button>
+        <button className="mobile-nav-item" onClick={() => user ? signOut() : setAuthOpen(true)}><span>●</span><small>{user ? 'Sign out' : 'Account'}</small></button>
+      </nav>
 
       {authOpen && (
         <div className="auth-backdrop" role="presentation" onClick={() => !authLoading && setAuthOpen(false)}>
