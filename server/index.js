@@ -146,7 +146,7 @@ app.post('/api/analytics/events', async (req, res) => {
     destination: clean(req.body?.destination),
     city: clean(req.body?.city, 100),
     sessionKey: clean(req.body?.sessionKey, 120),
-    metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : undefined,
+    metadata: req.body?.metadata && typeof req.body.metadata === 'object' && JSON.stringify(req.body.metadata).length <= 2000 ? req.body.metadata : undefined,
   }
   if (prisma) {
     try { await prisma.analyticsEvent.create({ data }) } catch (error) { console.error('Analytics event failed:', error.message) }
