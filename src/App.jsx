@@ -313,8 +313,8 @@ function App() {
         body: JSON.stringify({
           pickup,
           destination,
-          ...(pickupCoords || {}),
-          ...(destinationCoords || {}),
+          ...(resolvedPickup ? { pickupLat: resolvedPickup.lat, pickupLng: resolvedPickup.lng } : {}),
+          ...(resolvedDestination ? { destinationLat: resolvedDestination.lat, destinationLng: resolvedDestination.lng } : {}),
         }),
       })
 
@@ -451,6 +451,8 @@ function App() {
           phone,
           ...(pickupCoords || {}),
           ...(destinationCoords || {}),
+          distanceKm: selected.distanceKm,
+          durationMin: selected.durationMin,
         }),
       })
 
@@ -579,11 +581,11 @@ function App() {
                         <h3>{ride.name}</h3>
                         {index === 0 && <span className="best-badge">BEST VALUE</span>}
                       </div>
-                      <p>{ride.provider} · {ride.seats} seats · Pickup in {ride.eta} min</p>
+                      <p>{ride.provider} · {ride.seats} seats · Pickup in {ride.pickupEta || ride.eta} min · Trip {ride.durationMin || '—'} min</p>
                     </div>
                     <div className="ride-price">
                       <strong>₹{ride.fare + 8}</strong>
-                      <span>incl. ₹8 fee</span>
+                      <span>incl. ₹8 fee{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span>
                     </div>
                     <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>
                       {selected?.id === ride.id ? 'Selected' : 'Select'}
