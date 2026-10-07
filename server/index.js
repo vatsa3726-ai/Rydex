@@ -556,6 +556,7 @@ app.post('/api/admin/providers/:code/go-live', async (req, res) => {
     },
   })
 
+  if (passed) await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'LIVE' } })
   res.status(passed ? 200 : 409).json({
     ok: passed,
     liveApproved: updated.liveApproved,
@@ -659,6 +660,7 @@ app.put('/api/admin/providers/:code/connection', async (req, res) => {
       update: data,
       create: { providerId: provider.id, ...data },
     })
+    await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'CONNECTION' } })
     return res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
   } catch (error) {
     return res.status(500).json({ error: error.message || 'Unable to securely save provider credentials.' })
@@ -688,6 +690,7 @@ app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
     const status = response.ok ? 'CONNECTED' : 'ERROR'
     const errorMessage = response.ok ? null : `Provider returned HTTP ${response.status}.`
     await prisma.providerConnection.update({ where: { providerId: provider.id }, data: { status, lastTestedAt: new Date(), lastError: errorMessage } })
+    if (response.ok) await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'TESTED' } })
     res.json({ ok: response.ok, status, httpStatus: response.status, latencyMs: Date.now() - startedAt, error: errorMessage })
   } catch (error) {
     const message = error.name === 'TimeoutError' ? 'Provider connection timed out.' : 'Unable to reach provider API.'
