@@ -64,6 +64,8 @@ function App() {
   const [quoteTestLoading, setQuoteTestLoading] = useState(false)
   const [partnerStatus, setPartnerStatus] = useState(null)
   const [partnerStatusId, setPartnerStatusId] = useState('')
+  const [partnerDashboard, setPartnerDashboard] = useState(null)
+  const [partnerDashboardLoading, setPartnerDashboardLoading] = useState(false)
 
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
@@ -211,6 +213,19 @@ function App() {
     if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
     await loadAdminProviders()
     setEditingProvider(null)
+  }
+
+  const loadPartnerDashboard = async () => {
+    if (!partnerStatusId.trim()) return
+    setPartnerDashboardLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/partners/dashboard/${encodeURIComponent(partnerStatusId.trim())}`)
+      const data = await response.json()
+      if (!response.ok) return setApiNotice(data.error || 'Partner dashboard is not available.')
+      setPartnerDashboard(data)
+    } finally {
+      setPartnerDashboardLoading(false)
+    }
   }
 
   const loadPartnerStatus = async () => {
@@ -1005,6 +1020,26 @@ function App() {
         <button className="mobile-nav-item" onClick={() => user ? signOut() : setAuthOpen(true)}><span>●</span><small>{user ? 'Sign out' : 'Account'}</small></button>
       </nav>
 
+      {partnerDashboard && (
+        <section className="partner-dashboard-card">
+          <span className="eyebrow">PARTNER DASHBOARD</span>
+          <h2>{partnerDashboard.companyName}</h2>
+          <div className="partner-dashboard-grid">
+            <div><strong>Integration</strong><span>{partnerDashboard.integrationType}</span></div>
+            <div><strong>Status</strong><span>{partnerDashboard.liveApproved ? '🟢 LIVE' : partnerDashboard.integrationStatus}</span></div>
+            <div><strong>Cities</strong><span>{partnerDashboard.cities?.join(', ') || 'Not configured'}</span></div>
+            <div><strong>Ride types</strong><span>{partnerDashboard.rideTypes?.join(', ') || 'Not configured'}</span></div>
+          </div>
+          <div className="partner-dashboard-stats">
+            <div><strong>{partnerDashboard.analytics.searches}</strong><span>Searches</span></div>
+            <div><strong>{partnerDashboard.analytics.selections}</strong><span>Selections</span></div>
+            <div><strong>{partnerDashboard.analytics.handoffs}</strong><span>Handoffs</span></div>
+            <div><strong>{partnerDashboard.analytics.conversion}%</strong><span>Handoff conversion</span></div>
+          </div>
+          <button className="provider-action" onClick={loadPartnerDashboard} disabled={partnerDashboardLoading}>Refresh dashboard</button>
+        </section>
+      )}
+
       <section className="partner-status-card">
         <div>
           <span className="eyebrow">PARTNER ONBOARDING</span>
@@ -1013,7 +1048,7 @@ function App() {
         </div>
         <div className="partner-status-search">
           <input className="auth-input" value={partnerStatusId} onChange={(e) => setPartnerStatusId(e.target.value)} placeholder="Partner application ID" />
-          <button className="provider-action" onClick={loadPartnerStatus}>Check status</button>
+          <button className="provider-action" onClick={loadPartnerStatus}>Check status</button><button className="provider-action" onClick={loadPartnerDashboard}>Open dashboard</button>
         </div>
         {partnerStatus && (
           <div className="partner-steps">
