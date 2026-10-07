@@ -388,6 +388,8 @@ app.get('/api/auth/me', async (req, res) => {
 
 app.post('/api/bookings', async (req, res) => {
   const { pickup, destination, rideId, rideName, fare, phone, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
+  const session = getSession(req)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const numericFare = Number(fare)
   const normalizedPhone = String(phone || '').replace(/\s+/g, '')
 
@@ -428,7 +430,7 @@ app.post('/api/bookings', async (req, res) => {
       })
 
       const saved = await prisma.booking.create({
-        data: {
+        data: { userId: session.userId, 
           id: booking.id,
           userId: user.id,
           pickup: booking.pickup,
