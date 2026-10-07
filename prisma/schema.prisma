@@ -47,7 +47,7 @@ model PartnerApplication {
   onboardingStep  String                  @default("APPLICATION")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
-
+  partnerPassword String?
   @@index([status])
   @@index([createdAt])
 }
@@ -168,4 +168,16 @@ model ProviderConnection {
   updatedAt      DateTime @updatedAt
 
   provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}
+
+
+model PartnerSession {
+  id            String   @id @default(cuid())
+  applicationId String
+  token         String   @unique
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([applicationId])
+  @@index([expiresAt])
 }

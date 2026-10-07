@@ -66,6 +66,9 @@ function App() {
   const [partnerStatusId, setPartnerStatusId] = useState('')
   const [partnerDashboard, setPartnerDashboard] = useState(null)
   const [partnerDashboardLoading, setPartnerDashboardLoading] = useState(false)
+  const [partnerToken, setPartnerToken] = useState(localStorage.getItem('rydex_partner_token') || '')
+  const [partnerLogin, setPartnerLogin] = useState({ applicationId: '', password: '' })
+  const [partnerMe, setPartnerMe] = useState(null)
 
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
@@ -215,11 +218,32 @@ function App() {
     setEditingProvider(null)
   }
 
+  const loginPartner = async () => {
+    const response = await fetch(`${API_URL}/partners/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(partnerLogin),
+    })
+    const data = await response.json()
+    if (!response.ok) return setApiNotice(data.error || 'Partner login failed.')
+    localStorage.setItem('rydex_partner_token', data.token)
+    setPartnerToken(data.token)
+    setPartnerStatusId(partnerLogin.applicationId)
+    setApiNotice('Partner login successful.')
+  }
+
+  const loadPartnerMe = async () => {
+    if (!partnerToken) return
+    const response = await fetch(`${API_URL}/partners/me`, { headers: { Authorization: `Bearer ${partnerToken}` } })
+    const data = await response.json()
+    if (response.ok) setPartnerMe(data)
+  }
+
   const loadPartnerDashboard = async () => {
     if (!partnerStatusId.trim()) return
     setPartnerDashboardLoading(true)
     try {
-      const response = await fetch(`${API_URL}/partners/dashboard/${encodeURIComponent(partnerStatusId.trim())}`)
+      const response = await fetch(`${API_URL}/partners/dashboard/${encodeURIComponent(partnerStatusId.trim())}`, { headers: { Authorization: `Bearer ${partnerToken}` } })
       const data = await response.json()
       if (!response.ok) return setApiNotice(data.error || 'Partner dashboard is not available.')
       setPartnerDashboard(data)
@@ -1039,6 +1063,17 @@ function App() {
           <button className="provider-action" onClick={loadPartnerDashboard} disabled={partnerDashboardLoading}>Refresh dashboard</button>
         </section>
       )}
+
+      
+        <section className="partner-login-card">
+          <span className="eyebrow">PARTNER LOGIN</span>
+          <h3>Secure partner access</h3>
+          <div className="partner-status-search">
+            <input className="auth-input" value={partnerLogin.applicationId} onChange={(e) => setPartnerLogin({ ...partnerLogin, applicationId: e.target.value })} placeholder="Application ID" />
+            <input className="auth-input" type="password" value={partnerLogin.password} onChange={(e) => setPartnerLogin({ ...partnerLogin, password: e.target.value })} placeholder="Partner password" />
+            <button className="provider-action" onClick={loginPartner}>Sign in</button>
+          </div>
+        </section>
 
       <section className="partner-status-card">
         <div>
