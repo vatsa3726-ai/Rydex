@@ -194,7 +194,7 @@ app.post('/api/rides/search', async (req, res) => {
     coordinates: hasCoordinates
       ? { pickupLat, pickupLng, destinationLat, destinationLng }
       : null,
-  }, configuredProviders?.length ? configuredProviders : null)
+  }, prisma ? (configuredProviders || []) : null)
   res.json({
     pickup,
     destination,
