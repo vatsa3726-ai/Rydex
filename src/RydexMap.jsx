@@ -7,7 +7,7 @@ function RydexMap({ pickupCoords, destinationCoords, driverCoords, onPlaceSelect
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const markers = useRef({})
-  const routeRenderer = useRef(null)
+  const routePolylines = useRef([])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState('')
   const [placeInput, setPlaceInput] = useState('')
@@ -88,20 +88,20 @@ function RydexMap({ pickupCoords, destinationCoords, driverCoords, onPlaceSelect
     const drawRoute = async () => {
       if (!pickupCoords || !destinationCoords) return
       try {
-        const { DirectionsService, DirectionsRenderer } = await importLibrary('routes')
-        if (routeRenderer.current) routeRenderer.current.setMap(null)
-        const service = new DirectionsService()
-        routeRenderer.current = new DirectionsRenderer({
-          map,
-          suppressMarkers: true,
-          polylineOptions: { strokeWeight: 5 },
-        })
-        const result = await service.route({
+        const { Route } = await importLibrary('routes')
+        routePolylines.current.forEach((polyline) => polyline.setMap(null))
+        routePolylines.current = []
+        const { routes } = await Route.computeRoutes({
           origin: { lat: Number(pickupCoords.pickupLat), lng: Number(pickupCoords.pickupLng) },
           destination: { lat: Number(destinationCoords.destinationLat), lng: Number(destinationCoords.destinationLng) },
           travelMode: 'DRIVING',
+          routingPreference: 'TRAFFIC_AWARE',
+          fields: ['path'],
         })
-        routeRenderer.current.setDirections(result)
+        if (routes?.[0]) {
+          routePolylines.current = routes[0].createPolylines({ polylineOptions: { strokeWeight: 5 } })
+          routePolylines.current.forEach((polyline) => polyline.setMap(map))
+        }
       } catch {
         // The map and markers remain usable if routing is unavailable.
       }
