@@ -357,6 +357,10 @@ app.get('/api/partners/me', async (req, res) => {
 
 app.get('/api/partners/dashboard/:id', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\\s+/i, '')
+  const session = await prisma.partnerSession.findUnique({ where: { token } })
+  if (!session || session.expiresAt < new Date() || session.applicationId !== req.params.id) return res.status(401).json({ error: 'Partner authentication required.' })
+
   const application = await prisma.partnerApplication.findUnique({
     where: { id: req.params.id },
     include: { },
