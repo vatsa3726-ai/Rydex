@@ -51,6 +51,7 @@ function App() {
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
   const [adminData, setAdminData] = useState(null)
+  const [adminAnalytics, setAdminAnalytics] = useState(null)
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminProviders, setAdminProviders] = useState([])
   const [partnerApplications, setPartnerApplications] = useState([])
@@ -136,6 +137,15 @@ function App() {
     }
   }
 
+  const loadAdminAnalytics = async () => {
+    if (!adminToken) return
+    try {
+      const response = await fetch(`${API_URL}/admin/analytics?days=30`, { headers: { 'X-Admin-Token': adminToken } })
+      const data = await response.json()
+      if (response.ok) setAdminAnalytics(data)
+    } catch {}
+  }
+
   const loadPartnerApplications = async () => {
     if (!adminToken) return
     const response = await fetch(`${API_URL}/api/admin/partner-applications`, { headers: { 'X-Admin-Token': adminToken } })
@@ -216,7 +226,7 @@ function App() {
 
   const openAdminDashboard = async () => {
     setAdminOpen(true)
-    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders(); await loadPartnerApplications() }
+    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders(); await loadPartnerApplications(); await loadAdminAnalytics() }
   }
 
   const openProviderPortal = async () => {
@@ -787,7 +797,19 @@ function App() {
                             <p>{ride.seats} seats · Pickup in {ride.pickupEta} min · Trip {ride.durationMin || '—'} min</p>
                           </div>
                           <div className="ride-price"><strong>₹{ride.fare}</strong><span>provider price{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span></div>
-                          <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>{selected?.id === ride.id ? 'Selected' : 'Choose'}</button>
+                          <button className="select-btn" onClick={() => {
+  setSelected(ride)
+  setBooking(null)
+  const city = pickup.split(',').slice(-2).join(',').trim() || null
+  trackAnalytics(API_URL, 'PROVIDER_SELECTED', {
+    providerCode: ride.providerCode,
+    rideType: ride.rideType || ride.id,
+    pickup,
+    destination,
+    city,
+    metadata: { fare: ride.fare, pickupEta: ride.pickupEta },
+  })
+}}>{selected?.id === ride.id ? 'Selected' : 'Choose'}</button>
                         </article>
                       })}
                     </div>
