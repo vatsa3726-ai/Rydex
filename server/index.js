@@ -168,6 +168,9 @@ app.post('/api/rides/search', async (req, res) => {
   }
 
   const hasCoordinates = [pickupLat, pickupLng, destinationLat, destinationLng].every(Number.isFinite)
+  if (hasCoordinates && (pickupLat < -90 || pickupLat > 90 || destinationLat < -90 || destinationLat > 90 || pickupLng < -180 || pickupLng > 180 || destinationLng < -180 || destinationLng > 180)) {
+    return res.status(400).json({ error: 'Coordinates are out of range.' })
+  }
 
   const route = hasCoordinates
     ? await getRouteEstimate({ pickupLat, pickupLng, destinationLat, destinationLng })
