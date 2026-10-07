@@ -187,6 +187,6 @@ export function getProviderCatalog(providerList = null) {
     mode: String(provider.integrationType || 'DEMO').toLowerCase(),
     bookingUrl: provider.bookingUrl || null,
     authorizedIntegrationRequired: provider.integrationType !== 'DEMO',
-    liveQuotesEnabled: String(provider.integrationType || 'DEMO').toUpperCase() === 'API' && provider.connection?.status === 'CONNECTED',
+    liveQuotesEnabled: String(provider.integrationType || 'DEMO').toUpperCase() === 'API' && provider.liveApproved === true && provider.connection?.status === 'CONNECTED',
   }))
 }
