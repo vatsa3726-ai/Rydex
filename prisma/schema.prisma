@@ -152,3 +152,19 @@ model AnalyticsEvent {
   @@index([rideType, createdAt])
   @@index([city, createdAt])
 }
+
+
+model ProviderConnection {
+  id             String   @id @default(cuid())
+  providerId     String   @unique
+  apiBaseUrl     String?
+  apiKey         String?
+  apiSecret      String?
+  status         String   @default("NOT_CONFIGURED")
+  lastTestedAt   DateTime?
+  lastError      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  provider Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+}

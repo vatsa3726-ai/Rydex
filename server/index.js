@@ -367,6 +367,74 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   res.json({ application, provider })
 })
 
+app.get('/api/admin/providers/:code/connection', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.json({ connection: null })
+  const provider = await prisma.provider.findUnique({
+    where: { code: req.params.code },
+    include: { connection: true },
+  })
+  if (!provider) return res.status(404).json({ error: 'Provider not found.' })
+  const connection = provider.connection
+  res.json({
+    connection: connection ? {
+      id: connection.id,
+      apiBaseUrl: connection.apiBaseUrl,
+      apiKeyConfigured: Boolean(connection.apiKey),
+      apiSecretConfigured: Boolean(connection.apiSecret),
+      status: connection.status,
+      lastTestedAt: connection.lastTestedAt,
+      lastError: connection.lastError,
+    } : null,
+  })
+})
+
+app.put('/api/admin/providers/:code/connection', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const provider = await prisma.provider.findUnique({ where: { code: req.params.code } })
+  if (!provider) return res.status(404).json({ error: 'Provider not found.' })
+
+  const current = await prisma.providerConnection.findUnique({ where: { providerId: provider.id } })
+  const data = {
+    apiBaseUrl: req.body?.apiBaseUrl ? String(req.body.apiBaseUrl).trim() : null,
+    apiKey: req.body?.apiKey ? String(req.body.apiKey).trim() : current?.apiKey || null,
+    apiSecret: req.body?.apiSecret ? String(req.body.apiSecret).trim() : current?.apiSecret || null,
+    status: 'CONFIGURED',
+    lastError: null,
+  }
+  const connection = await prisma.providerConnection.upsert({
+    where: { providerId: provider.id },
+    update: data,
+    create: { providerId: provider.id, ...data },
+  })
+  res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
+})
+
+app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const provider = await prisma.provider.findUnique({ where: { code: req.params.code }, include: { connection: true } })
+  if (!provider) return res.status(404).json({ error: 'Provider not found.' })
+  if (!provider.connection?.apiBaseUrl) return res.status(400).json({ error: 'API base URL is not configured.' })
+
+  const startedAt = Date.now()
+  try {
+    const response = await fetch(provider.connection.apiBaseUrl, { method: 'GET', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) })
+    const status = response.ok ? 'CONNECTED' : 'ERROR'
+    const errorMessage = response.ok ? null : `Provider returned HTTP ${response.status}.`
+    await prisma.providerConnection.update({ where: { providerId: provider.id }, data: { status, lastTestedAt: new Date(), lastError: errorMessage } })
+    res.json({ ok: response.ok, status, httpStatus: response.status, latencyMs: Date.now() - startedAt, error: errorMessage })
+  } catch (error) {
+    const message = error.name === 'TimeoutError' ? 'Provider connection timed out.' : 'Unable to reach provider API.'
+    await prisma.providerConnection.update({ where: { providerId: provider.id }, data: { status: 'ERROR', lastTestedAt: new Date(), lastError: message } })
+    res.status(502).json({ ok: false, status: 'ERROR', latencyMs: Date.now() - startedAt, error: message })
+  }
+})
+
 app.get('/api/admin/providers', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })

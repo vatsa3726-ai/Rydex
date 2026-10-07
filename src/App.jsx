@@ -57,6 +57,9 @@ function App() {
   const [partnerApplications, setPartnerApplications] = useState([])
   const [providerForm, setProviderForm] = useState({ name: '', code: '', integrationType: 'DEMO', bookingUrl: '', cities: '', rideTypes: 'auto,bike,cab,premium', active: true })
   const [editingProvider, setEditingProvider] = useState(null)
+  const [connectionProvider, setConnectionProvider] = useState(null)
+  const [connectionForm, setConnectionForm] = useState({ apiBaseUrl: '', apiKey: '', apiSecret: '' })
+  const [connectionStatus, setConnectionStatus] = useState(null)
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -203,6 +206,43 @@ function App() {
     if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
     await loadAdminProviders()
     setEditingProvider(null)
+  }
+
+  const loadProviderConnection = async (provider) => {
+    if (!adminToken) return
+    setConnectionProvider(provider)
+    setConnectionStatus(null)
+    const response = await fetch(`${API_URL}/admin/providers/${encodeURIComponent(provider.code)}/connection`, { headers: { 'X-Admin-Token': adminToken } })
+    const data = await response.json()
+    if (!response.ok) return setApiNotice(data.error || 'Unable to load provider connection.')
+    setConnectionForm({ apiBaseUrl: data.connection?.apiBaseUrl || '', apiKey: '', apiSecret: '' })
+    setConnectionStatus(data.connection || { status: 'NOT_CONFIGURED' })
+  }
+
+  const saveProviderConnection = async () => {
+    if (!connectionProvider) return
+    const response = await fetch(`${API_URL}/admin/providers/${encodeURIComponent(connectionProvider.code)}/connection`, {
+      method: 'PUT',
+      headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify(connectionForm),
+    })
+    const data = await response.json()
+    if (!response.ok) return setApiNotice(data.error || 'Unable to save connection.')
+    setConnectionStatus(data.connection)
+    setConnectionForm((form) => ({ ...form, apiKey: '', apiSecret: '' }))
+    setApiNotice('Provider connection saved securely.')
+  }
+
+  const testProviderConnection = async () => {
+    if (!connectionProvider) return
+    const response = await fetch(`${API_URL}/admin/providers/${encodeURIComponent(connectionProvider.code)}/connection/test`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': adminToken },
+    })
+    const data = await response.json()
+    if (!response.ok && !data.status) return setApiNotice(data.error || 'Connection test failed.')
+    setConnectionStatus((current) => ({ ...current, status: data.status, lastTestedAt: new Date().toISOString(), lastError: data.error || null }))
+    setApiNotice(data.ok ? `Provider connected in ${data.latencyMs}ms.` : (data.error || 'Provider connection failed.'))
   }
 
   const toggleAdminProvider = async (provider) => {
@@ -920,6 +960,29 @@ function App() {
         <button className="mobile-nav-item" onClick={() => setProviderPortalOpen(true)}><span>◆</span><small>Partners</small></button>
         <button className="mobile-nav-item" onClick={() => user ? signOut() : setAuthOpen(true)}><span>●</span><small>{user ? 'Sign out' : 'Account'}</small></button>
       </nav>
+
+      {connectionProvider && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setConnectionProvider(null)}>
+          <section className="auth-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <button className="auth-close" onClick={() => setConnectionProvider(null)} aria-label="Close">×</button>
+            <span className="eyebrow">PROVIDER CONNECTION</span>
+            <h2>{connectionProvider.name}</h2>
+            <p>Connect an authorized provider API. Credentials are stored server-side and are not displayed after saving.</p>
+            <label className="auth-label">API base URL</label>
+            <input className="auth-input" value={connectionForm.apiBaseUrl} onChange={(e) => setConnectionForm({ ...connectionForm, apiBaseUrl: e.target.value })} placeholder="https://api.provider.com" />
+            <label className="auth-label">API key</label>
+            <input className="auth-input" type="password" value={connectionForm.apiKey} onChange={(e) => setConnectionForm({ ...connectionForm, apiKey: e.target.value })} placeholder={connectionStatus?.apiKeyConfigured ? 'Already configured — leave blank' : 'Enter API key'} />
+            <label className="auth-label">API secret</label>
+            <input className="auth-input" type="password" value={connectionForm.apiSecret} onChange={(e) => setConnectionForm({ ...connectionForm, apiSecret: e.target.value })} placeholder={connectionStatus?.apiSecretConfigured ? 'Already configured — leave blank' : 'Enter API secret'} />
+            <div className="provider-request-meta"><span>Status: {connectionStatus?.status || 'NOT_CONFIGURED'}</span>{connectionStatus?.lastTestedAt && <span>Last tested: {new Date(connectionStatus.lastTestedAt).toLocaleString()}</span>}</div>
+            {connectionStatus?.lastError && <small>{connectionStatus.lastError}</small>}
+            <div className="auth-actions">
+              <button className="pay-btn" onClick={saveProviderConnection}>Save connection</button>
+              <button className="provider-action" onClick={testProviderConnection} disabled={!connectionStatus?.apiBaseUrl}>Test connection</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {authOpen && (
         <div className="auth-backdrop" role="presentation" onClick={() => !authLoading && setAuthOpen(false)}>
