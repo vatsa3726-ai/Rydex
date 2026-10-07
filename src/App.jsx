@@ -38,6 +38,10 @@ function App() {
   const [bookingsOpen, setBookingsOpen] = useState(false)
   const [bookingsLoading, setBookingsLoading] = useState(false)
   const [driverConsoleOpen, setDriverConsoleOpen] = useState(false)
+  const [providerPortalOpen, setProviderPortalOpen] = useState(false)
+  const [providerDrivers, setProviderDrivers] = useState([])
+  const [providerQueue, setProviderQueue] = useState([])
+  const [providerLoading, setProviderLoading] = useState(false)
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -75,6 +79,31 @@ function App() {
     }, () => {}, { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 })
     return () => navigator.geolocation.clearWatch(watchId)
   }, [driverId, driverRide?.id])
+
+  const loadProviderPortal = async () => {
+    setProviderLoading(true)
+    try {
+      const [driversResponse, queueResponse] = await Promise.all([
+        fetch(`${API_URL}/providers/drivers`),
+        fetch(`${API_URL}/providers/bookings?status=CONFIRMED`),
+      ])
+      const driversData = await driversResponse.json()
+      const queueData = await queueResponse.json()
+      if (!driversResponse.ok) throw new Error(driversData.error || 'Unable to load drivers.')
+      if (!queueResponse.ok) throw new Error(queueData.error || 'Unable to load ride requests.')
+      setProviderDrivers(driversData.drivers || [])
+      setProviderQueue(queueData.bookings || [])
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to load provider dashboard.')
+    } finally {
+      setProviderLoading(false)
+    }
+  }
+
+  const openProviderPortal = async () => {
+    setProviderPortalOpen(true)
+    await loadProviderPortal()
+  }
 
   const loadDriverRide = async () => {
     if (!driverId) return
@@ -756,6 +785,43 @@ function App() {
               {tracking?.driver?.latitude ? `Live GPS · ${Number(tracking.driver.latitude).toFixed(5)}, ${Number(tracking.driver.longitude).toFixed(5)}` : 'Waiting for the driver to share a live location.'}
             </div>
             <p className="tracking-note">This is the live-tracking foundation. The map will use Google Maps when Maps/Places is connected.</p>
+          </section>
+        </div>
+      )}
+
+      {providerPortalOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setProviderPortalOpen(false)}>
+          <section className="bookings-modal provider-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="bookings-header">
+              <div><span className="eyebrow">RYDEX PARTNER</span><h2>Provider Portal</h2></div>
+              <button className="auth-close" onClick={() => setProviderPortalOpen(false)}>×</button>
+            </div>
+            <div className="provider-kpis">
+              <div><span>Drivers</span><strong>{providerDrivers.length}</strong><small>{providerDrivers.filter((driver) => driver.available).length} available</small></div>
+              <div><span>Ride requests</span><strong>{providerQueue.length}</strong><small>Paid & waiting</small></div>
+              <div><span>Active drivers</span><strong>{providerDrivers.filter((driver) => !driver.available).length}</strong><small>Currently assigned</small></div>
+            </div>
+            <div className="provider-section">
+              <div className="queue-title"><span>DRIVER FLEET</span><button className="refresh-btn" onClick={loadProviderPortal}>{providerLoading ? 'Loading…' : 'Refresh'}</button></div>
+              {providerDrivers.length ? <div className="provider-driver-list">{providerDrivers.map((driver) => (
+                <article className="provider-driver" key={driver.id}>
+                  <div><strong>{driver.name}</strong><span>{driver.vehicleType} · {driver.vehicleNumber || 'No vehicle number'}</span></div>
+                  <span className={`availability-dot ${driver.available ? 'available' : 'busy'}`}>{driver.available ? 'Available' : 'On ride'}</span>
+                </article>
+              ))}</div> : <div className="empty-history"><h3>No drivers yet</h3><p>Add your first driver from the driver console.</p></div>}
+            </div>
+            <div className="provider-section">
+              <div className="queue-title"><span>INCOMING PAID RIDES</span><button className="refresh-btn" onClick={loadProviderPortal}>Refresh</button></div>
+              {providerQueue.length ? <div className="booking-list">{providerQueue.map((item) => (
+                <article className="history-card" key={item.id}>
+                  <div className="history-top"><strong>{item.rideName}</strong><strong>₹{item.total}</strong></div>
+                  <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
+                  <div className="provider-request-meta"><span>Booking {item.id}</span><span>{item.distanceKm ? `${Number(item.distanceKm).toFixed(1)} km` : 'Route pending'}</span></div>
+                  <small>Dispatch this request to an available driver from the Driver Console.</small>
+                </article>
+              ))}</div> : <div className="empty-history"><h3>No pending requests</h3><p>Paid customer bookings waiting for dispatch will appear here.</p></div>}
+            </div>
+            <div className="provider-footer-note">Provider earnings and settlement reports are the next layer. This portal currently focuses on fleet visibility and dispatch.</div>
           </section>
         </div>
       )}
