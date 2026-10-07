@@ -170,7 +170,7 @@ export function getProviderAdapter(providerCode, providerList = []) {
 }
 
 export async function getRideQuotes(input, configuredProviders = null) {
-  const source = configuredProviders?.length ? configuredProviders : demoProviders
+  const source = configuredProviders !== null ? configuredProviders : demoProviders
   const results = await Promise.allSettled(source.map(async (provider) => {
     const adapter = createConfiguredAdapter(provider)
     const quotes = await adapter.searchQuotes(input)
