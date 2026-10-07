@@ -811,7 +811,7 @@ if (process.env.NODE_ENV === 'production') {
   const rootDir = path.dirname(fileURLToPath(import.meta.url))
   const distDir = path.join(rootDir, '..', 'dist')
   app.use(express.static(distDir))
-  app.get('*', (req, res, next) => {
+  app.get('/{*splat}', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next()
     res.sendFile(path.join(distDir, 'index.html'))
   })
