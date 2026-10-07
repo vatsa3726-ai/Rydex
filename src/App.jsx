@@ -747,9 +747,11 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/bookings`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           pickup,
           destination,
