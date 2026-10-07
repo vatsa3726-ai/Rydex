@@ -515,6 +515,7 @@ function App() {
           pickup,
           destination,
           rideId: selected.id,
+          providerCode: selected.providerCode,
           rideName: selected.name,
           fare: selected.fare,
           phone,
@@ -657,6 +658,7 @@ function App() {
                     <div className="ride-main">
                       <div className="ride-title">
                         <h3>{ride.name}</h3>
+                        <span className="provider-badge">{ride.provider}</span>
                         {index === 0 && <span className="best-badge">BEST VALUE</span>}
                       </div>
                       <p>{ride.provider} · {ride.seats} seats · Pickup in {ride.pickupEta || ride.eta} min · Trip {ride.durationMin || '—'} min</p>
