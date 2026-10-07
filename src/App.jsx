@@ -163,7 +163,7 @@ function App() {
 
   const loadTracking = async (bookingId) => {
     try {
-      const response = await fetch(`${API_URL}/bookings/${bookingId}/tracking`)
+      const response = await fetch(`${API_URL}/bookings/${bookingId}/tracking`, { headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}` } })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'Unable to load tracking.')
       setTracking(data)
@@ -373,7 +373,7 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/payments/order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId: booking.id }),
       })
       const data = await response.json()
@@ -394,7 +394,7 @@ function App() {
           try {
             const verify = await fetch(`${API_URL}/payments/verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               bookingId: booking.id,
               razorpayOrderId: payment.razorpay_order_id,
@@ -440,6 +440,7 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/bookings`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -616,7 +617,7 @@ function App() {
                         className="cancel-btn"
                         onClick={async () => {
                           try {
-                            const response = await fetch(`${API_URL}/bookings/${booking.id}/cancel`, { method: 'POST' })
+                            const response = await fetch(`${API_URL}/bookings/${booking.id}/cancel`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}` } })
                             const result = await response.json()
                             if (!response.ok) throw new Error(result.error || 'Unable to cancel booking.')
                             setBooking(result)
