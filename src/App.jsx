@@ -566,7 +566,6 @@ function App() {
         </a>
         <nav>
           <a href="#how">How it works</a>
-          <button className="nav-link-btn" onClick={() => { setDriverConsoleOpen(true); loadDriverQueue() }}>Driver console</button>
           <button className="nav-link-btn" onClick={openProviderPortal}>Partner portal</button>
           <button className="nav-link-btn" onClick={openAdminDashboard}>Admin</button>
           {user && <button className="nav-link-btn" onClick={loadBookings}>{bookingsLoading ? "Loading…" : "My bookings"}</button>}\n          <a href="#support">Support</a>
@@ -579,7 +578,7 @@ function App() {
           <div className="hero-copy">
             <span className="eyebrow">ONE SEARCH. EVERY RIDE.</span>
             <h1>Compare rides.<br /><span>Choose smarter.</span></h1>
-            <p>Find the best auto, bike and cab options in one place. No jumping between apps.</p>
+            <p>Compare fares and pickup times from multiple ride providers in one place. Choose the best option, then continue with that provider.</p>
           </div>
 
           <form className="search-card" onSubmit={searchRides}>
@@ -826,7 +825,7 @@ function App() {
                 <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
                 <div className="history-bottom"><span>{new Date(item.createdAt).toLocaleString()}</span><strong>₹{item.total}</strong></div>
                 <small>Booking ID: {item.id}</small>
-                {['DRIVER_ASSIGNED', 'IN_PROGRESS'].includes(item.status) && <button className="track-btn" onClick={() => openTracking(item)}>📍 Track ride</button>}
+                
               </article>
             ))}</div> : <div className="empty-history"><div className="empty-icon">↗</div><h3>No bookings yet</h3><p>Your Rydex rides will appear here after your first booking.</p></div>}
           </section>
