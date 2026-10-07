@@ -294,7 +294,7 @@ app.post('/api/payments/verify', async (req, res) => {
 
 app.use('/api/providers', (req, res, next) => {
   const expected = process.env.PROVIDER_API_TOKEN
-  if (!expected) return next()
+  if (!expected) return res.status(503).json({ error: 'Provider API authentication is not configured.' })
   if (String(req.headers['x-provider-token'] || '') !== expected) return res.status(401).json({ error: 'Provider access denied.' })
   next()
 })
