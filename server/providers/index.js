@@ -31,13 +31,37 @@ function buildProviderQuotes(provider, { pickup, destination, route }) {
   })
 }
 
-const adapters = demoProviders.map((provider) => ({ ...provider, async searchQuotes(input) { return buildProviderQuotes(provider, input) } }))
+const adapters = demoProviders.map((provider) => ({
+  ...provider,
+  integrationType: provider.bookingUrl ? 'BOOKING_LINK' : 'DEMO',
+  async searchQuotes(input) {
+    // Replace this adapter with the partner's documented API once Rydex has authorization.
+    return buildProviderQuotes(provider, input)
+  },
+}))
+
+function normalizeProviderQuote(quote, provider) {
+  return {
+    ...quote,
+    providerCode: provider.code,
+    provider: provider.name,
+    providerMode: provider.integrationType,
+    bookingUrl: provider.bookingUrl || null,
+  }
+}
+
+export function getProviderAdapter(providerCode) {
+  return adapters.find((adapter) => adapter.code === providerCode) || null
+}
 
 export async function getRideQuotes(input) {
-  const results = await Promise.all(adapters.map((adapter) => adapter.searchQuotes(input)))
+  const results = await Promise.all(adapters.map(async (adapter) => {
+    const quotes = await adapter.searchQuotes(input)
+    return quotes.map((quote) => normalizeProviderQuote(quote, adapter))
+  }))
   return results.flat()
 }
 
 export function getProviderCatalog() {
-  return adapters.map(({ code, name, bookingUrl }) => ({ code, name, mode: 'demo', bookingUrl, authorizedIntegrationRequired: true }))
+  return adapters.map(({ code, name, bookingUrl, integrationType }) => ({ code, name, mode: integrationType.toLowerCase(), bookingUrl, authorizedIntegrationRequired: integrationType !== 'DEMO' }))
 }
