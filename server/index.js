@@ -186,6 +186,45 @@ app.post('/api/bookings', (req, res) => {
   res.status(201).json({ ...booking, phone: normalizedPhone })
 })
 
+
+app.post('/api/bookings/:id/cancel', async (req, res) => {
+  const bookingId = req.params.id
+
+  if (prisma) {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: bookingId } })
+      if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+
+      if (!['PAYMENT_PENDING', 'CONFIRMED'].includes(booking.status)) {
+        return res.status(409).json({ error: 'This booking can no longer be cancelled.' })
+      }
+
+      const updated = await prisma.booking.update({
+        where: { id: bookingId },
+        data: { status: 'CANCELLED' },
+      })
+
+      bookings.set(bookingId, { ...updated, createdAt: updated.createdAt.toISOString(), updatedAt: updated.updatedAt.toISOString() })
+      return res.json(updated)
+    } catch (error) {
+      console.error('Database booking cancellation failed:', error.message)
+      return res.status(503).json({ error: 'Unable to cancel booking.' })
+    }
+  }
+
+  const booking = bookings.get(bookingId)
+  if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+
+  if (!['PAYMENT_PENDING', 'CONFIRMED'].includes(booking.status)) {
+    return res.status(409).json({ error: 'This booking can no longer be cancelled.' })
+  }
+
+  booking.status = 'CANCELLED'
+  booking.updatedAt = new Date().toISOString()
+  bookings.set(bookingId, booking)
+  res.json(booking)
+})
+
 app.get('/api/bookings/:id', async (req, res) => {
   if (prisma) {
     try {
