@@ -33,6 +33,9 @@ function App() {
   const [otpHint, setOtpHint] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
   const [authNotice, setAuthNotice] = useState('')
+  const [bookings, setBookings] = useState([])
+  const [bookingsOpen, setBookingsOpen] = useState(false)
+  const [bookingsLoading, setBookingsLoading] = useState(false)
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
   })
@@ -49,6 +52,28 @@ function App() {
         setUser(null)
       })
   }, [])
+
+  const loadBookings = async () => {
+    const token = localStorage.getItem('rydexToken')
+    if (!token) {
+      setAuthOpen(true)
+      return
+    }
+    setBookingsLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/bookings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to load bookings.')
+      setBookings(data.bookings || [])
+      setBookingsOpen(true)
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to load bookings.')
+    } finally {
+      setBookingsLoading(false)
+    }
+  }
 
   const requestOtp = async (event) => {
     event?.preventDefault()
@@ -299,7 +324,7 @@ function App() {
         </a>
         <nav>
           <a href="#how">How it works</a>
-          <a href="#support">Support</a>
+          {user && <button className="nav-link-btn" onClick={loadBookings}>{bookingsLoading ? "Loading…" : "My bookings"}</button>}\n          <a href="#support">Support</a>
           <button className="login-btn" onClick={() => user ? signOut() : setAuthOpen(true)}>{user ? 'Sign out' : 'Sign in'}</button>
         </nav>
       </header>
@@ -515,6 +540,22 @@ function App() {
             )}
             {authNotice && <div className="auth-notice">{authNotice}</div>}
             <small className="auth-footnote">Demo mode can show the OTP locally. Real SMS/WhatsApp delivery will be connected later.</small>
+          </section>
+        </div>
+      )}
+
+      {bookingsOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setBookingsOpen(false)}>
+          <section className="bookings-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="bookings-header"><div><span className="eyebrow">YOUR RIDES</span><h2>My bookings</h2></div><button className="auth-close" onClick={() => setBookingsOpen(false)}>×</button></div>
+            {bookings.length ? <div className="booking-list">{bookings.map((item) => (
+              <article className="history-card" key={item.id}>
+                <div className="history-top"><strong>{item.rideName}</strong><span className={`status-pill status-${String(item.status).toLowerCase()}`}>{String(item.status).replaceAll('_',' ')}</span></div>
+                <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
+                <div className="history-bottom"><span>{new Date(item.createdAt).toLocaleString()}</span><strong>₹{item.total}</strong></div>
+                <small>Booking ID: {item.id}</small>
+              </article>
+            ))}</div> : <div className="empty-history"><div className="empty-icon">↗</div><h3>No bookings yet</h3><p>Your Rydex rides will appear here after your first booking.</p></div>}
           </section>
         </div>
       )}

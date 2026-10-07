@@ -196,6 +196,30 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   res.json({ ok: true, token, user: { id: user.id, phone: normalizedPhone, name: user.name || null } })
 })
 
+app.get('/api/bookings', async (req, res) => {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const session = sessions.get(token)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
+
+  if (prisma) {
+    try {
+      const bookingsForUser = await prisma.booking.findMany({
+        where: { userId: session.userId },
+        orderBy: { createdAt: 'desc' },
+      })
+      return res.json({ bookings: bookingsForUser })
+    } catch (error) {
+      console.error('Database booking history failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load bookings.' })
+    }
+  }
+
+  const bookingsForUser = [...bookings.values()]
+    .filter((booking) => booking.phone === session.phone)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  res.json({ bookings: bookingsForUser })
+})
+
 app.get('/api/auth/me', async (req, res) => {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   const session = sessions.get(token)
