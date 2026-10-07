@@ -1028,6 +1028,20 @@ function App() {
   </div>
 )}
 <div className="provider-section">
+                  <div className="queue-title"><span>ANALYTICS · 30 DAYS</span><button className="refresh-btn" onClick={loadAdminAnalytics}>Refresh</button></div>
+                  <div className="provider-kpis">
+                    <div><span>Searches</span><strong>{adminAnalytics?.totals?.searches ?? 0}</strong><small>Ride searches</small></div>
+                    <div><span>Selections</span><strong>{adminAnalytics?.totals?.providerSelections ?? 0}</strong><small>Provider choices</small></div>
+                    <div><span>Handoffs</span><strong>{adminAnalytics?.totals?.handoffs ?? 0}</strong><small>Provider visits</small></div>
+                    <div><span>Conversion</span><strong>{adminAnalytics?.conversionRate ?? 0}%</strong><small>Search → handoff</small></div>
+                  </div>
+                  <div className="analytics-grid">
+                    <div><strong>Top providers</strong>{(adminAnalytics?.providers || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                    <div><strong>Popular ride types</strong>{(adminAnalytics?.rideTypes || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                    <div><strong>Top cities</strong>{(adminAnalytics?.cities || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                  </div>
+                </div>
+                <div className="provider-section">
                   <div className="queue-title"><span>PARTNER APPLICATIONS</span><button className="refresh-btn" onClick={loadPartnerApplications}>Refresh</button></div>
                   <div className="admin-provider-list">{partnerApplications.length ? partnerApplications.map((app) => <article className="history-card" key={app.id}>
                     <div className="history-top"><strong>{app.companyName}</strong><span className={`status-pill status-${String(app.status).toLowerCase()}`}>{app.status}</span></div>
