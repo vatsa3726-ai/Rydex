@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import crypto from 'node:crypto'
 import { getRideQuotes } from './providers/index.js'
+import { getRouteEstimate } from './routing.js'
 import { getPrisma, closePrisma } from './db.js'
 
 const app = express()
@@ -45,9 +46,14 @@ app.post('/api/rides/search', async (req, res) => {
 
   const hasCoordinates = [pickupLat, pickupLng, destinationLat, destinationLng].every(Number.isFinite)
 
+  const route = hasCoordinates
+    ? await getRouteEstimate({ pickupLat, pickupLng, destinationLat, destinationLng })
+    : null
+
   const quotes = await getRideQuotes({
     pickup,
     destination,
+    route,
     coordinates: hasCoordinates
       ? { pickupLat, pickupLng, destinationLat, destinationLng }
       : null,
@@ -57,6 +63,7 @@ app.post('/api/rides/search', async (req, res) => {
     destination,
     platformFee: PLATFORM_FEE,
     coordinates: hasCoordinates ? { pickupLat, pickupLng, destinationLat, destinationLng } : null,
+    route,
     rides: quotes.map((ride) => ({
       ...ride,
       total: ride.fare + PLATFORM_FEE,
@@ -373,13 +380,14 @@ app.post('/api/bookings', async (req, res) => {
 
   const routeCoords = [pickupLat, pickupLng, destinationLat, destinationLng].map(Number)
   const hasRouteCoords = routeCoords.every(Number.isFinite)
+  const routeEstimate = hasRouteCoords ? await getRouteEstimate({ pickupLat: routeCoords[0], pickupLng: routeCoords[1], destinationLat: routeCoords[2], destinationLng: routeCoords[3] }) : null
 
   const booking = {
     id: `RDX-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
     status: 'PAYMENT_PENDING',
     pickup,
     destination,
-    ...(hasRouteCoords ? { pickupLat: routeCoords[0], pickupLng: routeCoords[1], destinationLat: routeCoords[2], destinationLng: routeCoords[3] } : {}),
+    ...(hasRouteCoords ? { pickupLat: routeCoords[0], pickupLng: routeCoords[1], destinationLat: routeCoords[2], destinationLng: routeCoords[3], distanceKm: routeEstimate?.distanceKm || null, durationMin: routeEstimate?.durationMin || null } : {}),
     rideId,
     rideName,
     fare: numericFare,
@@ -408,6 +416,8 @@ app.post('/api/bookings', async (req, res) => {
           pickupLng: booking.pickupLng,
           destinationLat: booking.destinationLat,
           destinationLng: booking.destinationLng,
+          distanceKm: booking.distanceKm,
+          durationMin: booking.durationMin,
           rideType: booking.rideId,
           rideName: booking.rideName,
           fare: booking.fare,
