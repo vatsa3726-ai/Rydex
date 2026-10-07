@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { getRideQuotes, getProviderCatalog } from './providers/index.js'
 import { getRouteEstimate } from './routing.js'
 import { getPrisma, closePrisma } from './db.js'
+import { hashPassword, verifyPassword, hashToken, encryptSecret, decryptSecret, validateProviderUrl, clientIp } from './security.js'
 
 const app = express()
 const PORT = Number(process.env.PORT || 4000)
@@ -20,6 +21,10 @@ const OTP_TTL_MS = 5 * 60 * 1000
 const requestCounters = new Map()
 const RATE_WINDOW_MS = 15 * 60 * 1000
 const OTP_MAX_REQUESTS = 5
+const SEARCH_MAX_REQUESTS = 60
+const ANALYTICS_MAX_REQUESTS = 120
+const PARTNER_LOGIN_MAX_REQUESTS = 10
+const rateLimitKey = (prefix, req, suffix = '') => `${prefix}:${clientIp(req)}:${suffix}`
 
 function allowRateLimit(key, max = OTP_MAX_REQUESTS) {
   const now = Date.now()
@@ -55,8 +60,16 @@ async function savePaymentOrder(bookingId, order) {
   return null
 }
 
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || '').split(',').map((item) => item.trim()).filter(Boolean)
+if (process.env.NODE_ENV === 'production' && !allowedOrigins.length) {
+  throw new Error('FRONTEND_ORIGIN must be configured in production.')
+}
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.split(',').map((item) => item.trim()) : true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+    if (process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0) return callback(null, true)
+    return callback(new Error('Origin not allowed.'))
+  },
 }))
 app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET
@@ -110,6 +123,7 @@ app.get('/api/health', async (_req, res) => {
 })
 
 app.post('/api/analytics/events', async (req, res) => {
+  if (!allowRateLimit(rateLimitKey('analytics', req), ANALYTICS_MAX_REQUESTS)) return res.status(429).json({ error: 'Too many analytics events.' })
   const allowed = new Set(['SEARCH', 'RESULTS_SHOWN', 'PROVIDER_SELECTED', 'HANDOFF'])
   const eventType = String(req.body?.eventType || '').toUpperCase()
   if (!allowed.has(eventType)) return res.status(400).json({ error: 'Invalid analytics event.' })
@@ -135,6 +149,7 @@ app.post('/api/analytics/events', async (req, res) => {
 })
 
 app.post('/api/rides/search', async (req, res) => {
+  if (!allowRateLimit(rateLimitKey('search', req), SEARCH_MAX_REQUESTS)) return res.status(429).json({ error: 'Too many searches. Please try again shortly.' })
   const pickup = String(req.body.pickup || '').trim()
   const destination = String(req.body.destination || '').trim()
   const pickupLat = Number(req.body.pickupLat)
@@ -845,7 +860,7 @@ app.post('/api/auth/request-otp', (req, res) => {
 
   if (!allowRateLimit(`otp:${normalizedPhone}`)) return res.status(429).json({ error: 'Too many OTP requests. Try again later.' })
 
-  const code = String(Math.floor(100000 + Math.random() * 900000))
+  const code = String(crypto.randomInt(100000, 1000000))
   otpChallenges.set(normalizedPhone, { code, expiresAt: Date.now() + OTP_TTL_MS })
 
   const response = {
