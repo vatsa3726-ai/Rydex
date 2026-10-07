@@ -309,7 +309,26 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   const status = String(req.body?.status || '').toUpperCase()
   if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Invalid application status.' })
   const application = await prisma.partnerApplication.update({ where: { id: req.params.id }, data: { status } })
-  res.json({ application })
+  let provider = null
+  if (status === 'APPROVED') {
+    const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
+    let code = baseCode
+    let suffix = 2
+    while (await prisma.provider.findUnique({ where: { code } })) code = `${baseCode}-${suffix++}`
+    provider = await prisma.provider.create({
+      data: {
+        name: application.companyName,
+        code,
+        active: false,
+        integrationType: application.integrationType,
+        cities: application.cities,
+        rideTypes: application.rideTypes,
+        bookingUrl: null,
+      },
+    })
+    await prisma.partnerApplication.update({ where: { id: application.id }, data: { providerCode: provider.code } })
+  }
+  res.json({ application, provider })
 })
 
 app.get('/api/admin/providers', async (req, res) => {

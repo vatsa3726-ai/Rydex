@@ -52,6 +52,7 @@ function App() {
   const [adminData, setAdminData] = useState(null)
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminProviders, setAdminProviders] = useState([])
+  const [partnerApplications, setPartnerApplications] = useState([])
   const [providerForm, setProviderForm] = useState({ name: '', code: '', integrationType: 'DEMO', bookingUrl: '', cities: '', rideTypes: 'auto,bike,cab,premium', active: true })
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
@@ -133,6 +134,26 @@ function App() {
     }
   }
 
+  const loadPartnerApplications = async () => {
+    if (!adminToken) return
+    const response = await fetch(`${API_URL}/api/admin/partner-applications`, { headers: { 'X-Admin-Token': adminToken } })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to load partner applications.')
+    setPartnerApplications(data.applications || [])
+  }
+
+  const reviewPartnerApplication = async (application, status) => {
+    const response = await fetch(`${API_URL}/api/admin/partner-applications/${application.id}`, {
+      method: 'PATCH',
+      headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to review application.')
+    await Promise.all([loadPartnerApplications(), loadAdminProviders()])
+    setApiNotice(status === 'APPROVED' ? 'Partner approved and provider created.' : 'Partner application updated.')
+  }
+
   const loadAdminProviders = async () => {
     if (!adminToken) return
     const response = await fetch(`${API_URL}/api/admin/providers`, { headers: { 'X-Admin-Token': adminToken } })
@@ -188,7 +209,7 @@ function App() {
 
   const openAdminDashboard = async () => {
     setAdminOpen(true)
-    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders() }
+    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders(); await loadPartnerApplications() }
   }
 
   const openProviderPortal = async () => {
@@ -948,6 +969,16 @@ function App() {
                   <div><span>Collected</span><strong>₹{adminData.revenue?.total ?? 0}</strong><small>Completed rides</small></div>
                   <div><span>Ride fares</span><strong>₹{adminData.revenue?.fare ?? 0}</strong><small>Provider fares</small></div>
                   <div><span>Rydex revenue</span><strong>₹{adminData.revenue?.platformFee ?? 0}</strong><small>Platform fees</small></div>
+                </div>
+                <div className="provider-section">
+                  <div className="queue-title"><span>PARTNER APPLICATIONS</span><button className="refresh-btn" onClick={loadPartnerApplications}>Refresh</button></div>
+                  <div className="admin-provider-list">{partnerApplications.length ? partnerApplications.map((app) => <article className="history-card" key={app.id}>
+                    <div className="history-top"><strong>{app.companyName}</strong><span className={`status-pill status-${String(app.status).toLowerCase()}`}>{app.status}</span></div>
+                    <div className="provider-request-meta"><span>{app.contactName}</span><span>{app.integrationType}</span></div>
+                    <small>{app.email} · {app.cities?.join(', ') || 'Cities not specified'} · {app.rideTypes?.join(', ') || 'Ride types not specified'}</small>
+                    {app.website && <small>{app.website}</small>}
+                    {app.status === 'PENDING' && <div className="admin-approval-actions"><button className="pay-btn" onClick={() => reviewPartnerApplication(app, 'APPROVED')}>Approve & create provider</button><button className="refresh-btn" onClick={() => reviewPartnerApplication(app, 'REJECTED')}>Reject</button></div>}
+                  </article>) : <div className="empty-history"><h3>No partner applications</h3><p>New provider applications will appear here.</p></div>}</div>
                 </div>
                 <div className="provider-section">
                   <div className="queue-title"><span>PROVIDER NETWORK</span><button className="refresh-btn" onClick={loadAdminProviders}>Refresh</button></div>
