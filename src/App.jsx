@@ -517,6 +517,7 @@ function App() {
         <nav>
           <a href="#how">How it works</a>
           <button className="nav-link-btn" onClick={() => { setDriverConsoleOpen(true); loadDriverQueue() }}>Driver console</button>
+          <button className="nav-link-btn" onClick={openProviderPortal}>Partner portal</button>
           {user && <button className="nav-link-btn" onClick={loadBookings}>{bookingsLoading ? "Loading…" : "My bookings"}</button>}\n          <a href="#support">Support</a>
           <button className="login-btn" onClick={() => user ? signOut() : setAuthOpen(true)}>{user ? 'Sign out' : 'Sign in'}</button>
         </nav>
