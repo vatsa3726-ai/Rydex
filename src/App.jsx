@@ -372,9 +372,8 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/payments/order`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ bookingId: booking.id }),
       })
       const data = await response.json()
@@ -395,7 +394,7 @@ function App() {
           try {
             const verify = await fetch(`${API_URL}/payments/verify`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               bookingId: booking.id,
               razorpayOrderId: payment.razorpay_order_id,
