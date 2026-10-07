@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
+import RydexMap from './RydexMap.jsx'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
 
@@ -270,6 +271,28 @@ function App() {
     return list
   }, [rides, sort])
 
+  const resolvePlace = async (query) => {
+    const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+    if (!key || !query.trim()) return null
+    try {
+      const { setOptions, importLibrary } = await import('@googlemaps/js-api-loader')
+      setOptions({ key, v: 'weekly' })
+      const { AutocompleteSuggestion } = await importLibrary('places')
+      const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input: query.trim(),
+        includedRegionCodes: ['in'],
+      })
+      const prediction = suggestions?.[0]?.placePrediction
+      if (!prediction) return null
+      const place = prediction.toPlace()
+      await place.fetchFields({ fields: ['displayName', 'formattedAddress', 'location'] })
+      if (!place.location) return null
+      return { name: place.displayName || place.formattedAddress || query, lat: place.location.lat(), lng: place.location.lng() }
+    } catch {
+      return null
+    }
+  }
+
   const searchRides = async (event) => {
     event.preventDefault()
     if (!pickup.trim() || !destination.trim()) return
@@ -277,6 +300,11 @@ function App() {
     setLoading(true)
     setApiNotice('')
     setBooking(null)
+
+    const resolvedPickup = pickupCoords || await resolvePlace(pickup)
+    const resolvedDestination = destinationCoords || await resolvePlace(destination)
+    if (resolvedPickup && !pickupCoords) setPickupCoords({ pickupLat: resolvedPickup.lat, pickupLng: resolvedPickup.lng })
+    if (resolvedDestination && !destinationCoords) setDestinationCoords({ destinationLat: resolvedDestination.lat, destinationLng: resolvedDestination.lng })
 
     try {
       const response = await fetch(`${API_URL}/rides/search`, {
@@ -529,6 +557,18 @@ function App() {
               </div>
             </div>
 
+            <div className="route-map-card">
+              <div className="map-card-head"><div><span className="eyebrow">LIVE MAP</span><h3>{pickup} → {destination}</h3></div><span>Google Maps</span></div>
+              <RydexMap
+                pickupCoords={pickupCoords}
+                destinationCoords={destinationCoords}
+                onPlaceSelected={(place) => {
+                  setLandmarkQuery(place.name)
+                  setApiNotice(`Map location selected: ${place.name}`)
+                }}
+              />
+            </div>
+
             <div className="results-grid">
               <div className="ride-list">
                 {sortedRides.map((ride, index) => (
@@ -698,12 +738,11 @@ function App() {
         <div className="auth-backdrop" role="presentation" onClick={() => setTrackingOpen(false)}>
           <section className="tracking-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <div className="bookings-header"><div><span className="eyebrow">LIVE RIDE</span><h2>Track your driver</h2></div><button className="auth-close" onClick={() => setTrackingOpen(false)}>×</button></div>
-            <div className="tracking-map">
-              <div className="map-road road-a"></div><div className="map-road road-b"></div>
-              <div className="map-pin pickup-pin">●</div><div className="map-pin driver-pin">🚕</div><div className="map-pin destination-pin">◆</div>
-              <div className="map-route"></div>
-              <span className="map-label pickup-label">Pickup</span><span className="map-label destination-label">Destination</span>
-            </div>
+            <RydexMap
+              pickupCoords={tracking?.pickup?.lat && tracking?.pickup?.lng ? { pickupLat: tracking.pickup.lat, pickupLng: tracking.pickup.lng } : null}
+              destinationCoords={tracking?.destination?.lat && tracking?.destination?.lng ? { destinationLat: tracking.destination.lat, destinationLng: tracking.destination.lng } : null}
+              driverCoords={tracking?.driver}
+            />
             <div className="tracking-summary">
               <div><span>Status</span><strong>{String(tracking?.status || trackingBooking?.status || 'LOADING').replaceAll('_',' ')}</strong></div>
               <div><span>Driver</span><strong>{tracking?.driver?.name || 'Finding driver…'}</strong></div>
