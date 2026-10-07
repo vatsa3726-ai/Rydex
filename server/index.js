@@ -522,6 +522,10 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
       data: { providerCode: provider.code, partnerPasswordHash: hashPassword(temporaryPassword) },
     })
   }
+  if (status === 'REJECTED' && application.providerCode) {
+    await prisma.provider.updateMany({ where: { code: application.providerCode }, data: { active: false, liveApproved: false, liveApprovedAt: null, liveError: 'Partner application rejected.' } })
+    await prisma.partnerSession.updateMany({ where: { applicationId: application.id, revokedAt: null }, data: { revokedAt: new Date() } })
+  }
   const safeApplication = {
     id: application.id, companyName: application.companyName, contactName: application.contactName,
     email: application.email, phone: application.phone, website: application.website,
