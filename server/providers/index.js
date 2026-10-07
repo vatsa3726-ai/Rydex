@@ -10,9 +10,9 @@ const rideTypes = [
 ]
 
 const demoProviders = [
-  { code: 'rydex-partner', name: 'Rydex Partner', multiplier: 1, etaOffset: 0 },
-  { code: 'cityride-demo', name: 'CityRide Demo', multiplier: 1.08, etaOffset: 1 },
-  { code: 'quickcab-demo', name: 'QuickCab Demo', multiplier: 0.94, etaOffset: 2 },
+  { code: 'rydex-partner', name: 'Rydex Partner', multiplier: 1, etaOffset: 0, bookingUrl: null },
+  { code: 'cityride-demo', name: 'CityRide Demo', multiplier: 1.08, etaOffset: 1, bookingUrl: null },
+  { code: 'quickcab-demo', name: 'QuickCab Demo', multiplier: 0.94, etaOffset: 2, bookingUrl: null },
 ]
 
 function buildProviderQuotes(provider, { pickup, destination, route }) {
@@ -26,7 +26,7 @@ function buildProviderQuotes(provider, { pickup, destination, route }) {
     return {
       id: `${provider.code}-${ride.id}`, providerCode: provider.code, provider: provider.name, providerMode: 'demo',
       rideType: ride.id, icon: ride.icon, name: ride.name, seats: ride.seats, eta: pickupEta, pickupEta,
-      durationMin, distanceKm, fare, route: { pickup, destination },
+      durationMin, distanceKm, fare, bookingUrl: provider.bookingUrl, route: { pickup, destination },
     }
   })
 }
@@ -39,5 +39,5 @@ export async function getRideQuotes(input) {
 }
 
 export function getProviderCatalog() {
-  return adapters.map(({ code, name }) => ({ code, name, mode: 'demo', authorizedIntegrationRequired: true }))
+  return adapters.map(({ code, name, bookingUrl }) => ({ code, name, mode: 'demo', bookingUrl, authorizedIntegrationRequired: true }))
 }
