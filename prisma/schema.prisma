@@ -54,6 +54,7 @@ model Booking {
 
   user     User?     @relation(fields: [userId], references: [id])
   provider Provider? @relation(fields: [providerId], references: [id])
+  payment  Payment?
 
   @@index([userId])
   @@index([status])
@@ -71,4 +72,5 @@ model Payment {
   status          String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  booking         Booking  @relation(fields: [bookingId], references: [id])
 }
