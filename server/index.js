@@ -4,7 +4,7 @@ import cors from 'cors'
 import crypto from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getRideQuotes } from './providers/index.js'
+import { getRideQuotes, getProviderCatalog } from './providers/index.js'
 import { getRouteEstimate } from './routing.js'
 import { getPrisma, closePrisma } from './db.js'
 
@@ -146,6 +146,10 @@ app.post('/api/rides/search', async (req, res) => {
       total: ride.fare + PLATFORM_FEE,
     })),
   })
+})
+
+app.get('/api/providers/catalog', (_req, res) => {
+  res.json({ providers: getProviderCatalog() })
 })
 
 app.post('/api/payments/order', async (req, res) => {
@@ -524,10 +528,11 @@ app.get('/api/auth/me', async (req, res) => {
 })
 
 app.post('/api/bookings', async (req, res) => {
-  const { pickup, destination, rideId, rideName, fare, phone, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
+  const { pickup, destination, rideId, rideName, fare, phone, providerCode, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
   const session = getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const numericFare = Number(fare)
+  const normalizedProviderCode = String(providerCode || 'rydex-partner').trim()
   const normalizedPhone = String(phone || '').replace(/\s+/g, '')
 
   if (!pickup || !destination || !rideId || !rideName || !Number.isFinite(numericFare)) {
@@ -568,9 +573,16 @@ app.post('/api/bookings', async (req, res) => {
         create: { phone: normalizedPhone },
       })
 
+      const provider = await prisma.provider.upsert({
+        where: { code: normalizedProviderCode },
+        update: { active: true },
+        create: { code: normalizedProviderCode, name: normalizedProviderCode === 'rydex-partner' ? 'Rydex Partner' : normalizedProviderCode, active: true },
+      })
+
       const saved = await prisma.booking.create({
         data: {
           id: booking.id,
+          providerId: provider.id,
           userId: user.id,
           pickup: booking.pickup,
           destination: booking.destination,

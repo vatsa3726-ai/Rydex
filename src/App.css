@@ -285,3 +285,6 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
   .mobile-nav-item.active,.mobile-nav-item:hover{color:#fff;background:rgba(255,20,147,.10)}
   .mobile-nav-item.active span,.mobile-nav-item:hover span{color:#ff55ae}
 }
+
+.provider-badge{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.035);color:#9f95a7;border-radius:999px;padding:3px 7px;font-size:8px;font-weight:800;letter-spacing:.02em}
+.ride-title{flex-wrap:wrap}
