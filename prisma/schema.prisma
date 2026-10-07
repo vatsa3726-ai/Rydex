@@ -47,7 +47,6 @@ model Driver {
   updatedAt     DateTime @updatedAt
 
   provider Provider? @relation(fields: [providerId], references: [id])
-  driver   Driver?   @relation(fields: [driverId], references: [id])
   bookings Booking[]
 
   @@index([providerId])
@@ -81,6 +80,7 @@ model Booking {
 
   user     User?     @relation(fields: [userId], references: [id])
   provider Provider? @relation(fields: [providerId], references: [id])
+  driver   Driver?   @relation(fields: [driverId], references: [id])
   payment  Payment?
 
   @@index([userId])
