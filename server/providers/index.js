@@ -31,37 +31,51 @@ function buildProviderQuotes(provider, { pickup, destination, route }) {
   })
 }
 
-const adapters = demoProviders.map((provider) => ({
+function createDemoAdapter(provider) {
+  return {
+    ...provider,
+    integrationType: provider.integrationType || (provider.bookingUrl ? 'BOOKING_LINK' : 'DEMO'),
+    async searchQuotes(input) {
+      return buildProviderQuotes(provider, input)
+    },
+  }
+}
+
+const adapters = demoProviders.map((provider) => createDemoAdapter({
   ...provider,
   integrationType: provider.bookingUrl ? 'BOOKING_LINK' : 'DEMO',
-  async searchQuotes(input) {
-    // Replace this adapter with the partner's documented API once Rydex has authorization.
-    return buildProviderQuotes(provider, input)
-  },
 }))
 
-function normalizeProviderQuote(quote, provider) {
-  return {
-    ...quote,
-    providerCode: provider.code,
-    provider: provider.name,
-    providerMode: provider.integrationType,
+function createConfiguredAdapter(provider) {
+  return createDemoAdapter({
+    code: provider.code,
+    name: provider.name,
     bookingUrl: provider.bookingUrl || null,
-  }
+    integrationType: provider.integrationType || 'DEMO',
+    multiplier: 1,
+    etaOffset: 0,
+  })
 }
 
 export function getProviderAdapter(providerCode) {
   return adapters.find((adapter) => adapter.code === providerCode) || null
 }
 
-export async function getRideQuotes(input) {
-  const results = await Promise.all(adapters.map(async (adapter) => {
+export async function getRideQuotes(input, configuredProviders = null) {
+  const providerAdapters = configuredProviders?.length
+    ? configuredProviders.map(createConfiguredAdapter)
+    : adapters
+
+  const results = await Promise.all(providerAdapters.map(async (adapter) => {
     const quotes = await adapter.searchQuotes(input)
     return quotes.map((quote) => normalizeProviderQuote(quote, adapter))
   }))
   return results.flat()
 }
 
-export function getProviderCatalog() {
+export function getProviderCatalog(providerList = null) {
+  const source = providerList?.length ? providerList.map(createConfiguredAdapter) : adapters
+  return source.map(({ code, name, bookingUrl, integrationType }) => ({ code, name, mode: integrationType.toLowerCase(), bookingUrl, authorizedIntegrationRequired: integrationType !== 'DEMO' }))
+}
   return adapters.map(({ code, name, bookingUrl, integrationType }) => ({ code, name, mode: integrationType.toLowerCase(), bookingUrl, authorizedIntegrationRequired: integrationType !== 'DEMO' }))
 }
