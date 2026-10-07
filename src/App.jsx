@@ -176,7 +176,11 @@ function App() {
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Unable to review application.')
     await Promise.all([loadPartnerApplications(), loadAdminProviders()])
-    setApiNotice(status === 'APPROVED' ? 'Partner approved and provider created.' : 'Partner application updated.')
+    setApiNotice(status === 'APPROVED'
+      ? (data.temporaryPassword
+        ? `Partner approved. Temporary password: ${data.temporaryPassword} — share it securely and ask the partner to change it.`
+        : 'Partner approved and provider created.')
+      : 'Partner application updated.')
   }
 
   const loadAdminProviders = async () => {
