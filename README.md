@@ -18,9 +18,9 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Render deployment
 
-The repository includes `render.yaml` for a single-service deployment: the Node API serves the built React app and connects to managed Render Postgres. Render Blueprints support wiring `DATABASE_URL` directly from a Postgres resource and prompting for secret values without committing them. citeturn0search0turn0search1
+The repository includes `render.yaml` for a single-service deployment: the Node API serves the built React app and connects to managed Render Postgres. Render Blueprints support wiring `DATABASE_URL` directly from a Postgres resource and prompting for secret values without committing them.
 
-For testing, Render offers free web services and Postgres, but the free Postgres database expires after 30 days and free services have important limitations, so use paid resources before a real launch. citeturn2search0
+For testing, Render offers free web services and Postgres, but the free Postgres database expires after 30 days and free services have important limitations, so use paid resources before a real launch.
 
 After creating the Blueprint:
 1. Enter Razorpay test credentials.
