@@ -3,7 +3,7 @@ name: Rydex CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, security-hardening-2]
 
 jobs:
   web-build:
