@@ -157,7 +157,7 @@ app.post('/api/rides/search', async (req, res) => {
     try {
       configuredProviders = await prisma.provider.findMany({
         where: { active: true },
-        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true },
+        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true, connection: { select: { apiBaseUrl: true, apiKey: true, apiSecret: true, status: true } } },
         orderBy: { name: 'asc' },
       })
     } catch {}
@@ -174,12 +174,12 @@ app.post('/api/rides/search', async (req, res) => {
   res.json({
     pickup,
     destination,
-    platformFee: PLATFORM_FEE,
+    platformFee: 0,
     coordinates: hasCoordinates ? { pickupLat, pickupLng, destinationLat, destinationLng } : null,
     route,
     rides: quotes.map((ride) => ({
       ...ride,
-      total: ride.fare + PLATFORM_FEE,
+      total: ride.fare,
     })),
   })
 })
