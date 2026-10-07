@@ -377,6 +377,21 @@ app.post('/api/partners/auth/logout', async (req, res) => {
   res.json({ ok: true })
 })
 
+app.post('/api/partners/auth/change-password', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
+  const currentPassword = String(req.body?.currentPassword || '')
+  const newPassword = String(req.body?.newPassword || '')
+  if (newPassword.length < 12) return res.status(400).json({ error: 'New password must be at least 12 characters.' })
+  const application = await prisma.partnerApplication.findUnique({ where: { id: session.applicationId } })
+  if (!application?.partnerPasswordHash || !verifyPassword(currentPassword, application.partnerPasswordHash)) return res.status(401).json({ error: 'Current password is incorrect.' })
+  await prisma.partnerApplication.update({ where: { id: application.id }, data: { partnerPasswordHash: hashPassword(newPassword) } })
+  await prisma.partnerSession.updateMany({ where: { applicationId: application.id, revokedAt: null }, data: { revokedAt: new Date() } })
+  res.json({ ok: true, message: 'Password changed. Please sign in again.' })
+})
+
 app.get('/api/partners/me', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
