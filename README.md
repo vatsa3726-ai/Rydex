@@ -29,3 +29,22 @@ After creating the Blueprint:
 4. Set `FRONTEND_ORIGIN` to the production origin if cross-origin requests are needed.
 5. Configure the Razorpay webhook URL as `https://<your-domain>/api/payments/webhook`.
 6. Test OTP, search, booking, payment, webhook reconciliation, driver assignment and completion in test mode.
+
+
+## Production security requirements
+
+Before deploying production, configure:
+- `FRONTEND_ORIGIN` with the exact production origin.
+- `PROVIDER_CREDENTIAL_KEY` as a base64-encoded 32-byte random key.
+- `ADMIN_TOKEN` and `PROVIDER_API_TOKEN` as strong secrets.
+- `OTP_DEMO_MODE=false`.
+
+Generate a provider credential key with Node:
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+```
+
+Rydex production uses the redirect-first model: Rydex compares authorized provider quotes and hands the user to the selected provider. Direct Rydex booking, Rydex payment, and Rydex driver operations remain development-only.
+
+
+Security hardening PR #44 includes automated validation before merge.

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { getRideQuotes, getProviderCatalog } from './providers/index.js'
 import { getRouteEstimate } from './routing.js'
 import { getPrisma, closePrisma } from './db.js'
+import { hashPassword, verifyPassword, hashToken, encryptSecret, decryptSecret, validateProviderUrl, clientIp } from './security.js'
 
 const app = express()
 const PORT = Number(process.env.PORT || 4000)
@@ -20,6 +21,10 @@ const OTP_TTL_MS = 5 * 60 * 1000
 const requestCounters = new Map()
 const RATE_WINDOW_MS = 15 * 60 * 1000
 const OTP_MAX_REQUESTS = 5
+const SEARCH_MAX_REQUESTS = 60
+const ANALYTICS_MAX_REQUESTS = 120
+const PARTNER_LOGIN_MAX_REQUESTS = 10
+const rateLimitKey = (prefix, req, suffix = '') => `${prefix}:${clientIp(req)}:${suffix}`
 
 function allowRateLimit(key, max = OTP_MAX_REQUESTS) {
   const now = Date.now()
@@ -34,8 +39,14 @@ function allowRateLimit(key, max = OTP_MAX_REQUESTS) {
   return true
 }
 
-function getSession(req) {
+async function getSession(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (!token) return null
+  if (prisma) {
+    const stored = await prisma.userSession.findUnique({ where: { tokenHash: hashToken(token) } })
+    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) return null
+    return { userId: stored.userId, token, sessionId: stored.id }
+  }
   return sessions.get(token) || null
 }
 
@@ -55,8 +66,16 @@ async function savePaymentOrder(bookingId, order) {
   return null
 }
 
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || '').split(',').map((item) => item.trim()).filter(Boolean)
+if (process.env.NODE_ENV === 'production' && !allowedOrigins.length) {
+  throw new Error('FRONTEND_ORIGIN must be configured in production.')
+}
 app.use(cors({
-  origin: process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.split(',').map((item) => item.trim()) : true,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+    if (process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0) return callback(null, true)
+    return callback(new Error('Origin not allowed.'))
+  },
 }))
 app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET
@@ -110,6 +129,7 @@ app.get('/api/health', async (_req, res) => {
 })
 
 app.post('/api/analytics/events', async (req, res) => {
+  if (!allowRateLimit(rateLimitKey('analytics', req), ANALYTICS_MAX_REQUESTS)) return res.status(429).json({ error: 'Too many analytics events.' })
   const allowed = new Set(['SEARCH', 'RESULTS_SHOWN', 'PROVIDER_SELECTED', 'HANDOFF'])
   const eventType = String(req.body?.eventType || '').toUpperCase()
   if (!allowed.has(eventType)) return res.status(400).json({ error: 'Invalid analytics event.' })
@@ -126,7 +146,7 @@ app.post('/api/analytics/events', async (req, res) => {
     destination: clean(req.body?.destination),
     city: clean(req.body?.city, 100),
     sessionKey: clean(req.body?.sessionKey, 120),
-    metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : undefined,
+    metadata: req.body?.metadata && typeof req.body.metadata === 'object' && JSON.stringify(req.body.metadata).length <= 2000 ? req.body.metadata : undefined,
   }
   if (prisma) {
     try { await prisma.analyticsEvent.create({ data }) } catch (error) { console.error('Analytics event failed:', error.message) }
@@ -135,6 +155,7 @@ app.post('/api/analytics/events', async (req, res) => {
 })
 
 app.post('/api/rides/search', async (req, res) => {
+  if (!allowRateLimit(rateLimitKey('search', req), SEARCH_MAX_REQUESTS)) return res.status(429).json({ error: 'Too many searches. Please try again shortly.' })
   const pickup = String(req.body.pickup || '').trim()
   const destination = String(req.body.destination || '').trim()
   const pickupLat = Number(req.body.pickupLat)
@@ -147,6 +168,9 @@ app.post('/api/rides/search', async (req, res) => {
   }
 
   const hasCoordinates = [pickupLat, pickupLng, destinationLat, destinationLng].every(Number.isFinite)
+  if (hasCoordinates && (pickupLat < -90 || pickupLat > 90 || destinationLat < -90 || destinationLat > 90 || pickupLng < -180 || pickupLng > 180 || destinationLng < -180 || destinationLng > 180)) {
+    return res.status(400).json({ error: 'Coordinates are out of range.' })
+  }
 
   const route = hasCoordinates
     ? await getRouteEstimate({ pickupLat, pickupLng, destinationLat, destinationLng })
@@ -170,7 +194,7 @@ app.post('/api/rides/search', async (req, res) => {
     coordinates: hasCoordinates
       ? { pickupLat, pickupLng, destinationLat, destinationLng }
       : null,
-  }, configuredProviders?.length ? configuredProviders : null)
+  }, prisma ? (configuredProviders || []) : null)
   res.json({
     pickup,
     destination,
@@ -199,8 +223,9 @@ app.get('/api/providers/catalog', async (_req, res) => {
 })
 
 app.post('/api/payments/order', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex payment is disabled in redirect mode. Complete payment with the selected provider.' })
   const { bookingId } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
 
   const booking = await findBooking(bookingId)
@@ -241,8 +266,9 @@ app.post('/api/payments/order', async (req, res) => {
 })
 
 app.post('/api/payments/verify', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex payment is disabled in redirect mode.' })
   const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
 
   const booking = await findBooking(bookingId)
@@ -279,8 +305,13 @@ app.post('/api/payments/verify', async (req, res) => {
 
 app.use('/api/providers', (req, res, next) => {
   const expected = process.env.PROVIDER_API_TOKEN
-  if (!expected) return next()
+  if (!expected) return res.status(503).json({ error: 'Provider API authentication is not configured.' })
   if (String(req.headers['x-provider-token'] || '') !== expected) return res.status(401).json({ error: 'Provider access denied.' })
+  next()
+})
+
+app.use('/api/providers/drivers', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex does not operate or assign drivers. Driver operations are handled by the selected provider.' })
   next()
 })
 
@@ -332,24 +363,50 @@ app.post('/api/partners/apply', async (req, res) => {
 
 app.post('/api/partners/auth/login', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  if (!allowRateLimit(rateLimitKey('partner-login', req, String(req.body?.applicationId || '').trim()), PARTNER_LOGIN_MAX_REQUESTS)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' })
+  }
   const applicationId = String(req.body?.applicationId || '').trim()
   const password = String(req.body?.password || '')
-  if (!applicationId || !password) return res.status(400).json({ error: 'Application ID and password are required.' })
+  if (!applicationId || password.length < 8) return res.status(400).json({ error: 'Application ID and a valid password are required.' })
 
   const application = await prisma.partnerApplication.findUnique({ where: { id: applicationId } })
-  if (!application || application.status !== 'APPROVED' || !application.providerCode) return res.status(401).json({ error: 'Partner account is not approved.' })
-  if (!application.partnerPassword || application.partnerPassword !== password) return res.status(401).json({ error: 'Invalid partner credentials.' })
+  if (!application || application.status !== 'APPROVED' || !application.providerCode) return res.status(401).json({ error: 'Invalid partner credentials.' })
+  if (!application.partnerPasswordHash || !verifyPassword(password, application.partnerPasswordHash)) return res.status(401).json({ error: 'Invalid partner credentials.' })
 
   const token = crypto.randomBytes(32).toString('hex')
-  await prisma.partnerSession.create({ data: { applicationId, token, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } })
-  res.json({ token, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  await prisma.partnerSession.create({ data: { applicationId, tokenHash: hashToken(token), expiresAt } })
+  res.json({ token, expiresAt: expiresAt.toISOString() })
+})
+
+app.post('/api/partners/auth/logout', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (token) await prisma.partnerSession.updateMany({ where: { tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } })
+  res.json({ ok: true })
+})
+
+app.post('/api/partners/auth/change-password', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
+  const currentPassword = String(req.body?.currentPassword || '')
+  const newPassword = String(req.body?.newPassword || '')
+  if (newPassword.length < 12) return res.status(400).json({ error: 'New password must be at least 12 characters.' })
+  const application = await prisma.partnerApplication.findUnique({ where: { id: session.applicationId } })
+  if (!application?.partnerPasswordHash || !verifyPassword(currentPassword, application.partnerPasswordHash)) return res.status(401).json({ error: 'Current password is incorrect.' })
+  await prisma.partnerApplication.update({ where: { id: application.id }, data: { partnerPasswordHash: hashPassword(newPassword) } })
+  await prisma.partnerSession.updateMany({ where: { applicationId: application.id, revokedAt: null }, data: { revokedAt: new Date() } })
+  res.json({ ok: true, message: 'Password changed. Please sign in again.' })
 })
 
 app.get('/api/partners/me', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  const session = await prisma.partnerSession.findUnique({ where: { token } })
-  if (!session || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
   const application = await prisma.partnerApplication.findUnique({ where: { id: session.applicationId } })
   if (!application) return res.status(404).json({ error: 'Partner account not found.' })
   res.json({ id: application.id, companyName: application.companyName, email: application.email, providerCode: application.providerCode, onboardingStep: application.onboardingStep })
@@ -358,8 +415,8 @@ app.get('/api/partners/me', async (req, res) => {
 app.get('/api/partners/dashboard/:id', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\\s+/i, '')
-  const session = await prisma.partnerSession.findUnique({ where: { token } })
-  if (!session || session.expiresAt < new Date() || session.applicationId !== req.params.id) return res.status(401).json({ error: 'Partner authentication required.' })
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date() || session.applicationId !== req.params.id) return res.status(401).json({ error: 'Partner authentication required.' })
 
   const application = await prisma.partnerApplication.findUnique({
     where: { id: req.params.id },
@@ -419,7 +476,14 @@ app.get('/api/admin/partner-applications', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
   if (!prisma) return res.json({ applications: [] })
-  const applications = await prisma.partnerApplication.findMany({ orderBy: { createdAt: 'desc' } })
+  const applications = await prisma.partnerApplication.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, companyName: true, contactName: true, email: true, phone: true, website: true,
+      cities: true, rideTypes: true, integrationType: true, notes: true, status: true,
+      providerCode: true, onboardingStep: true, createdAt: true, updatedAt: true,
+    },
+  })
   res.json({ applications })
 })
 
@@ -431,25 +495,45 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) return res.status(400).json({ error: 'Invalid application status.' })
   const application = await prisma.partnerApplication.update({ where: { id: req.params.id }, data: { status } })
   let provider = null
+  let temporaryPassword = null
   if (status === 'APPROVED') {
-    const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
-    let code = baseCode
-    let suffix = 2
-    while (await prisma.provider.findUnique({ where: { code } })) code = `${baseCode}-${suffix++}`
-    provider = await prisma.provider.create({
-      data: {
-        name: application.companyName,
-        code,
-        active: false,
-        integrationType: application.integrationType,
-        cities: application.cities,
-        rideTypes: application.rideTypes,
-        bookingUrl: null,
-      },
+    if (application.providerCode) {
+      provider = await prisma.provider.findUnique({ where: { code: application.providerCode } })
+    } else {
+      const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
+      let code = baseCode
+      let suffix = 2
+      while (await prisma.provider.findUnique({ where: { code } })) code = `${baseCode}-${suffix++}`
+      provider = await prisma.provider.create({
+        data: {
+          name: application.companyName,
+          code,
+          active: false,
+          integrationType: application.integrationType,
+          cities: application.cities,
+          rideTypes: application.rideTypes,
+          bookingUrl: null,
+        },
+      })
+    }
+    temporaryPassword = crypto.randomBytes(18).toString('base64url')
+    await prisma.partnerApplication.update({
+      where: { id: application.id },
+      data: { providerCode: provider.code, partnerPasswordHash: hashPassword(temporaryPassword) },
     })
-    await prisma.partnerApplication.update({ where: { id: application.id }, data: { providerCode: provider.code } })
   }
-  res.json({ application, provider })
+  if (status === 'REJECTED' && application.providerCode) {
+    await prisma.provider.updateMany({ where: { code: application.providerCode }, data: { active: false, liveApproved: false, liveApprovedAt: null, liveError: 'Partner application rejected.' } })
+    await prisma.partnerSession.updateMany({ where: { applicationId: application.id, revokedAt: null }, data: { revokedAt: new Date() } })
+  }
+  const safeApplication = {
+    id: application.id, companyName: application.companyName, contactName: application.contactName,
+    email: application.email, phone: application.phone, website: application.website,
+    cities: application.cities, rideTypes: application.rideTypes, integrationType: application.integrationType,
+    notes: application.notes, status: application.status, providerCode: provider?.code || application.providerCode,
+    onboardingStep: application.onboardingStep, createdAt: application.createdAt, updatedAt: application.updatedAt,
+  }
+  res.json({ application: safeApplication, provider, ...(temporaryPassword ? { temporaryPassword } : {}) })
 })
 
 app.post('/api/admin/providers/:code/go-live', async (req, res) => {
@@ -476,6 +560,7 @@ app.post('/api/admin/providers/:code/go-live', async (req, res) => {
     },
   })
 
+  if (passed) await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'LIVE' } })
   res.status(passed ? 200 : 409).json({
     ok: passed,
     liveApproved: updated.liveApproved,
@@ -501,15 +586,15 @@ app.post('/api/admin/providers/:code/test-quote', async (req, res) => {
 
   const startedAt = Date.now()
   try {
-    const endpoint = new URL(provider.connection.apiBaseUrl)
+    const endpoint = validateProviderUrl(provider.connection.apiBaseUrl)
     endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/quotes'
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(provider.connection.apiKey ? { 'X-API-Key': provider.connection.apiKey } : {}),
-        ...(provider.connection.apiSecret ? { 'X-API-Secret': provider.connection.apiSecret } : {}),
+        ...(provider.connection.apiKey ? { 'X-API-Key': decryptSecret(provider.connection.apiKey) } : {}),
+        ...(provider.connection.apiSecret ? { 'X-API-Secret': decryptSecret(provider.connection.apiSecret) } : {}),
       },
       body: JSON.stringify({
         pickup: req.body?.pickup || 'Test Pickup',
@@ -564,19 +649,26 @@ app.put('/api/admin/providers/:code/connection', async (req, res) => {
   if (!provider) return res.status(404).json({ error: 'Provider not found.' })
 
   const current = await prisma.providerConnection.findUnique({ where: { providerId: provider.id } })
-  const data = {
-    apiBaseUrl: req.body?.apiBaseUrl ? String(req.body.apiBaseUrl).trim() : null,
-    apiKey: req.body?.apiKey ? String(req.body.apiKey).trim() : current?.apiKey || null,
-    apiSecret: req.body?.apiSecret ? String(req.body.apiSecret).trim() : current?.apiSecret || null,
-    status: 'CONFIGURED',
-    lastError: null,
+  let apiBaseUrl = req.body?.apiBaseUrl ? String(req.body.apiBaseUrl).trim() : current?.apiBaseUrl || null
+  try {
+    if (apiBaseUrl) apiBaseUrl = validateProviderUrl(apiBaseUrl).toString()
+  } catch (error) {
+    return res.status(400).json({ error: error.message })
   }
-  const connection = await prisma.providerConnection.upsert({
-    where: { providerId: provider.id },
-    update: data,
-    create: { providerId: provider.id, ...data },
-  })
-  res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
+  try {
+    const apiKey = req.body?.apiKey ? encryptSecret(String(req.body.apiKey).trim()) : current?.apiKey || null
+    const apiSecret = req.body?.apiSecret ? encryptSecret(String(req.body.apiSecret).trim()) : current?.apiSecret || null
+    const data = { apiBaseUrl, apiKey, apiSecret, status: 'CONFIGURED', lastError: null }
+    const connection = await prisma.providerConnection.upsert({
+      where: { providerId: provider.id },
+      update: data,
+      create: { providerId: provider.id, ...data },
+    })
+    await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'CONNECTION' } })
+    return res.json({ connection: { apiBaseUrl: connection.apiBaseUrl, apiKeyConfigured: Boolean(connection.apiKey), apiSecretConfigured: Boolean(connection.apiSecret), status: connection.status } })
+  } catch (error) {
+    return res.status(500).json({ error: error.message || 'Unable to securely save provider credentials.' })
+  }
 })
 
 app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
@@ -589,10 +681,20 @@ app.post('/api/admin/providers/:code/connection/test', async (req, res) => {
 
   const startedAt = Date.now()
   try {
-    const response = await fetch(provider.connection.apiBaseUrl, { method: 'GET', headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(8000) })
+    validateProviderUrl(provider.connection.apiBaseUrl)
+    const response = await fetch(provider.connection.apiBaseUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        ...(provider.connection.apiKey ? { 'X-API-Key': decryptSecret(provider.connection.apiKey) } : {}),
+        ...(provider.connection.apiSecret ? { 'X-API-Secret': decryptSecret(provider.connection.apiSecret) } : {}),
+      },
+      signal: AbortSignal.timeout(8000),
+    })
     const status = response.ok ? 'CONNECTED' : 'ERROR'
     const errorMessage = response.ok ? null : `Provider returned HTTP ${response.status}.`
     await prisma.providerConnection.update({ where: { providerId: provider.id }, data: { status, lastTestedAt: new Date(), lastError: errorMessage } })
+    if (response.ok) await prisma.partnerApplication.updateMany({ where: { providerCode: provider.code, status: 'APPROVED' }, data: { onboardingStep: 'TESTED' } })
     res.json({ ok: response.ok, status, httpStatus: response.status, latencyMs: Date.now() - startedAt, error: errorMessage })
   } catch (error) {
     const message = error.name === 'TimeoutError' ? 'Provider connection timed out.' : 'Unable to reach provider API.'
@@ -605,8 +707,29 @@ app.get('/api/admin/providers', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
   if (!prisma) return res.json({ providers: getProviderCatalog().map((provider) => ({ ...provider, active: true, cities: [], rideTypes: [] })) })
-  const providers = await prisma.provider.findMany({ orderBy: { createdAt: 'desc' } })
-  res.json({ providers })
+  const providers = await prisma.provider.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, name: true, code: true, active: true, integrationType: true,
+      bookingUrl: true, cities: true, rideTypes: true, liveApproved: true,
+      liveApprovedAt: true, liveError: true, createdAt: true,
+      connection: { select: { id: true, apiBaseUrl: true, status: true, lastTestedAt: true, lastError: true, apiKey: true, apiSecret: true } },
+    },
+  })
+  res.json({
+    providers: providers.map(({ connection, ...provider }) => ({
+      ...provider,
+      connection: connection ? {
+        id: connection.id,
+        apiBaseUrl: connection.apiBaseUrl,
+        status: connection.status,
+        lastTestedAt: connection.lastTestedAt,
+        lastError: connection.lastError,
+        apiKeyConfigured: Boolean(connection.apiKey),
+        apiSecretConfigured: Boolean(connection.apiSecret),
+      } : null,
+    })),
+  })
 })
 
 app.post('/api/admin/providers', async (req, res) => {
@@ -845,7 +968,7 @@ app.post('/api/auth/request-otp', (req, res) => {
 
   if (!allowRateLimit(`otp:${normalizedPhone}`)) return res.status(429).json({ error: 'Too many OTP requests. Try again later.' })
 
-  const code = String(Math.floor(100000 + Math.random() * 900000))
+  const code = String(crypto.randomInt(100000, 1000000))
   otpChallenges.set(normalizedPhone, { code, expiresAt: Date.now() + OTP_TTL_MS })
 
   const response = {
@@ -889,7 +1012,17 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString('hex')
-  sessions.set(token, { userId: user.id, phone: normalizedPhone, createdAt: Date.now() })
+  if (prisma) {
+    await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    })
+  } else {
+    sessions.set(token, { userId: user.id, phone: normalizedPhone, createdAt: Date.now() })
+  }
   res.json({ ok: true, token, user: { id: user.id, phone: normalizedPhone, name: user.name || null } })
 })
 
@@ -917,6 +1050,13 @@ app.get('/api/bookings', async (req, res) => {
   res.json({ bookings: bookingsForUser })
 })
 
+app.post('/api/auth/logout', async (req, res) => {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (prisma && token) await prisma.userSession.updateMany({ where: { tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } })
+  if (token) sessions.delete(token)
+  res.json({ ok: true })
+})
+
 app.get('/api/auth/me', async (req, res) => {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   const session = sessions.get(token)
@@ -935,8 +1075,9 @@ app.get('/api/auth/me', async (req, res) => {
 })
 
 app.post('/api/bookings', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Direct Rydex booking is disabled. Choose a provider and complete the ride with the provider.' })
   const { pickup, destination, rideId, rideName, fare, phone, providerCode, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const numericFare = Number(fare)
   const normalizedProviderCode = String(providerCode || 'rydex-partner').trim()
@@ -1019,7 +1160,7 @@ app.post('/api/bookings', async (req, res) => {
 
 
 app.post('/api/bookings/:id/cancel', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const bookingId = req.params.id
 
@@ -1093,7 +1234,7 @@ app.post('/api/providers/drivers/:driverId/location', async (req, res) => {
 })
 
 app.get('/api/bookings/:id/tracking', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
@@ -1203,7 +1344,7 @@ app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
 })
 
 app.get('/api/bookings/:id', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
@@ -1236,10 +1377,27 @@ if (process.env.NODE_ENV === 'production') {
   })
 }
 
-const server = app.listen(PORT, () => {
-  console.log(`Rydex API running on http://localhost:${PORT}`)
-  console.log(`Database: ${prisma ? 'PostgreSQL configured' : 'memory fallback'}`)
-})
+async function startServer() {
+  if (process.env.NODE_ENV === 'production' && !process.env.PROVIDER_CREDENTIAL_KEY) {
+    throw new Error('PROVIDER_CREDENTIAL_KEY must be configured in production.')
+  }
+  if (prisma && process.env.PROVIDER_CREDENTIAL_KEY) {
+    const connections = await prisma.providerConnection.findMany({ select: { id: true, apiKey: true, apiSecret: true } })
+    for (const connection of connections) {
+      const apiKey = connection.apiKey && !String(connection.apiKey).startsWith('enc:v1:') ? encryptSecret(connection.apiKey) : connection.apiKey
+      const apiSecret = connection.apiSecret && !String(connection.apiSecret).startsWith('enc:v1:') ? encryptSecret(connection.apiSecret) : connection.apiSecret
+      if (apiKey !== connection.apiKey || apiSecret !== connection.apiSecret) {
+        await prisma.providerConnection.update({ where: { id: connection.id }, data: { apiKey, apiSecret } })
+      }
+    }
+  }
+  return app.listen(PORT, () => {
+    console.log(`Rydex API running on http://localhost:${PORT}`)
+    console.log(`Database: ${prisma ? 'PostgreSQL configured' : 'memory fallback'}`)
+  })
+}
+
+const server = await startServer()
 
 const shutdown = async () => {
   server.close(async () => {

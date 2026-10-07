@@ -23,6 +23,7 @@ model User {
   name      String?
   createdAt DateTime  @default(now())
   bookings  Booking[]
+  sessions  UserSession[]
 }
 
 enum PartnerApplicationStatus {
@@ -47,7 +48,8 @@ model PartnerApplication {
   onboardingStep  String                  @default("APPLICATION")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
-  partnerPassword String?
+  partnerPasswordHash String?
+  partnerSessions PartnerSession[]
   @@index([status])
   @@index([createdAt])
 }
@@ -61,9 +63,13 @@ model Provider {
   bookingUrl      String?
   cities          String[] @default([])
   rideTypes       String[] @default([])
+  liveApproved    Boolean  @default(false)
+  liveApprovedAt  DateTime?
+  liveError       String?
   createdAt       DateTime @default(now())
   bookings    Booking[]
   drivers     Driver[]
+  connection ProviderConnection?
 }
 
 model Driver {
@@ -174,10 +180,28 @@ model ProviderConnection {
 model PartnerSession {
   id            String   @id @default(cuid())
   applicationId String
-  token         String   @unique
+  tokenHash     String   @unique
   expiresAt     DateTime
   createdAt     DateTime @default(now())
+  revokedAt     DateTime?
+
+  application PartnerApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([applicationId])
+  @@index([expiresAt])
+}
+
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@index([expiresAt])
 }

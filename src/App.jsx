@@ -176,7 +176,11 @@ function App() {
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Unable to review application.')
     await Promise.all([loadPartnerApplications(), loadAdminProviders()])
-    setApiNotice(status === 'APPROVED' ? 'Partner approved and provider created.' : 'Partner application updated.')
+    setApiNotice(status === 'APPROVED'
+      ? (data.temporaryPassword
+        ? `Partner approved. Temporary password: ${data.temporaryPassword} — share it securely and ask the partner to change it.`
+        : 'Partner approved and provider created.')
+      : 'Partner application updated.')
   }
 
   const loadAdminProviders = async () => {
@@ -543,7 +547,11 @@ function App() {
     }
   }
 
-  const signOut = () => {
+  const signOut = async () => {
+    const token = localStorage.getItem('rydexToken')
+    if (token) {
+      try { await fetch(`${API_URL}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }) } catch {}
+    }
     localStorage.removeItem('rydexToken')
     localStorage.removeItem('rydexUser')
     setUser(null)
@@ -739,9 +747,11 @@ function App() {
 
     try {
       const response = await fetch(`${API_URL}/bookings`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`, 'Content-Type': 'application/json' },
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('rydexToken') || ''}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           pickup,
           destination,
