@@ -360,7 +360,12 @@ app.patch('/api/admin/providers/:code', async (req, res) => {
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
   if (!prisma) return res.status(503).json({ error: 'Database is required to update providers.' })
   try {
-    const provider = await prisma.provider.update({ where: { code: req.params.code }, data: { active: Boolean(req.body?.active) } })
+    const data = {}
+    for (const field of ['name', 'integrationType', 'bookingUrl', 'cities', 'rideTypes']) {
+      if (req.body && req.body[field] !== undefined) data[field] = req.body[field]
+    }
+    if (req.body?.active !== undefined) data.active = Boolean(req.body.active)
+    const provider = await prisma.provider.update({ where: { code: req.params.code }, data })
     res.json({ provider })
   } catch { res.status(404).json({ error: 'Provider not found.' }) }
 })
