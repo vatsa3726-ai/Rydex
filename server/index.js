@@ -148,8 +148,18 @@ app.post('/api/rides/search', async (req, res) => {
   })
 })
 
-app.get('/api/providers/catalog', (_req, res) => {
-  res.json({ providers: getProviderCatalog() })
+app.get('/api/providers/catalog', async (_req, res) => {
+  if (!prisma) return res.json({ providers: getProviderCatalog(), source: 'adapter-registry' })
+  try {
+    const providers = await prisma.provider.findMany({
+      where: { active: true },
+      select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true },
+      orderBy: { name: 'asc' },
+    })
+    res.json({ providers: providers.length ? providers : getProviderCatalog(), source: providers.length ? 'database' : 'adapter-registry' })
+  } catch {
+    res.json({ providers: getProviderCatalog(), source: 'adapter-registry' })
+  }
 })
 
 app.post('/api/payments/order', async (req, res) => {
