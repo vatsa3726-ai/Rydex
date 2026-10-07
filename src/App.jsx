@@ -277,6 +277,24 @@ function App() {
                       </button>
                     )}
                     <p className="demo-note">Status: {booking.status}. Partner dispatch will follow payment confirmation.</p>
+                    {['PAYMENT_PENDING', 'CONFIRMED'].includes(booking.status) && (
+                      <button
+                        className="cancel-btn"
+                        onClick={async () => {
+                          try {
+                            const response = await fetch(`${API_URL}/bookings/${booking.id}/cancel`, { method: 'POST' })
+                            const result = await response.json()
+                            if (!response.ok) throw new Error(result.error || 'Unable to cancel booking.')
+                            setBooking(result)
+                            setApiNotice('Booking cancelled.')
+                          } catch (error) {
+                            setApiNotice(error.message || 'Unable to cancel booking.')
+                          }
+                        }}
+                      >
+                        Cancel booking
+                      </button>
+                    )}
                   </div>
                 ) : selected ? (
                   <>
