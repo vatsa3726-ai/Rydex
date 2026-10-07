@@ -54,6 +54,7 @@ function App() {
   const [adminProviders, setAdminProviders] = useState([])
   const [partnerApplications, setPartnerApplications] = useState([])
   const [providerForm, setProviderForm] = useState({ name: '', code: '', integrationType: 'DEMO', bookingUrl: '', cities: '', rideTypes: 'auto,bike,cab,premium', active: true })
+  const [editingProvider, setEditingProvider] = useState(null)
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -181,15 +182,20 @@ function App() {
     await loadAdminProviders()
   }
 
-  const toggleAdminProvider = async (provider) => {
-    const response = await fetch(`${API_URL}/api/admin/providers/${encodeURIComponent(provider.code)}`, {
+  const updateAdminProvider = async (code, patch) => {
+    const response = await fetch(`${API_URL}/api/admin/providers/${encodeURIComponent(code)}`, {
       method: 'PATCH',
       headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: !provider.active }),
+      body: JSON.stringify(patch),
     })
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
     await loadAdminProviders()
+    setEditingProvider(null)
+  }
+
+  const toggleAdminProvider = async (provider) => {
+    await updateAdminProvider(provider.code, { active: !provider.active })
   }
 
   const submitPartnerApplication = async () => {
@@ -970,7 +976,23 @@ function App() {
                   <div><span>Ride fares</span><strong>₹{adminData.revenue?.fare ?? 0}</strong><small>Provider fares</small></div>
                   <div><span>Rydex revenue</span><strong>₹{adminData.revenue?.platformFee ?? 0}</strong><small>Platform fees</small></div>
                 </div>
-                <div className="provider-section">
+                {editingProvider && (
+  <div className="auth-backdrop" role="presentation" onClick={() => setEditingProvider(null)}>
+    <section className="bookings-modal provider-modal" role="dialog" aria-modal="true" onClick={e => e.stopPropagation()}>
+      <div className="bookings-header"><div><span className="eyebrow">PROVIDER CONFIGURATION</span><h2>{editingProvider.name}</h2></div><button className="auth-close" onClick={() => setEditingProvider(null)}>×</button></div>
+      <div className="partner-apply-form">
+        <input placeholder="Provider name" value={editingProvider.name} onChange={e => setEditingProvider({...editingProvider,name:e.target.value})}/>
+        <select value={editingProvider.integrationType} onChange={e => setEditingProvider({...editingProvider,integrationType:e.target.value})}><option>DEMO</option><option>BOOKING_LINK</option><option>API</option></select>
+        <input placeholder="Official booking URL" value={editingProvider.bookingUrl || ''} onChange={e => setEditingProvider({...editingProvider,bookingUrl:e.target.value})}/>
+        <input placeholder="Cities" value={(editingProvider.cities || []).join(',')} onChange={e => setEditingProvider({...editingProvider,cities:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})}/>
+        <input placeholder="Ride types" value={(editingProvider.rideTypes || []).join(',')} onChange={e => setEditingProvider({...editingProvider,rideTypes:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})}/>
+        <button className="pay-btn" onClick={() => updateAdminProvider(editingProvider.code,{name:editingProvider.name,integrationType:editingProvider.integrationType,bookingUrl:editingProvider.bookingUrl || null,cities:editingProvider.cities || [],rideTypes:editingProvider.rideTypes || [],active:Boolean(editingProvider.active)})}>Save configuration</button>
+      </div>
+      <p className="provider-footer-note">Keep the provider inactive until its official booking flow or authorized API has been tested.</p>
+    </section>
+  </div>
+)}
+<div className="provider-section">
                   <div className="queue-title"><span>PARTNER APPLICATIONS</span><button className="refresh-btn" onClick={loadPartnerApplications}>Refresh</button></div>
                   <div className="admin-provider-list">{partnerApplications.length ? partnerApplications.map((app) => <article className="history-card" key={app.id}>
                     <div className="history-top"><strong>{app.companyName}</strong><span className={`status-pill status-${String(app.status).toLowerCase()}`}>{app.status}</span></div>
@@ -991,7 +1013,7 @@ function App() {
                     <input placeholder="Ride types" value={providerForm.rideTypes} onChange={(e) => setProviderForm({ ...providerForm, rideTypes: e.target.value })} />
                     <button className="pay-btn" onClick={saveAdminProvider}>Add provider +</button>
                   </div>
-                  <div className="admin-provider-list">{adminProviders.map((provider) => <article className="history-card" key={provider.code}><div className="history-top"><strong>{provider.name}</strong><span className={provider.active ? 'status-pill status-completed' : 'status-pill status-cancelled'}>{provider.active ? 'ACTIVE' : 'OFF'}</span></div><div className="provider-request-meta"><span>{provider.code}</span><span>{provider.integrationType}</span></div><small>{provider.cities?.join(', ') || 'All cities'} · {provider.rideTypes?.join(', ') || 'All ride types'}</small><button className="refresh-btn" onClick={() => toggleAdminProvider(provider)}>{provider.active ? 'Deactivate' : 'Activate'}</button></article>)}</div>
+                  <div className="admin-provider-list">{adminProviders.map((provider) => <article className="history-card" key={provider.code}><div className="history-top"><strong>{provider.name}</strong><span className={provider.active ? 'status-pill status-completed' : 'status-pill status-cancelled'}>{provider.active ? 'ACTIVE' : 'OFF'}</span></div><div className="provider-request-meta"><span>{provider.code}</span><span>{provider.integrationType}</span></div><small>{provider.cities?.join(', ') || 'All cities'} · {provider.rideTypes?.join(', ') || 'All ride types'}</small><div className="provider-config-actions"><button className="refresh-btn" onClick={() => setEditingProvider(provider)}>Configure</button><button className="refresh-btn" onClick={() => toggleAdminProvider(provider)}>{provider.active ? 'Deactivate' : 'Activate'}</button></div></article>)}</div>
                 </div>
                 <div className="provider-section">
                   <div className="queue-title"><span>RECENT BOOKINGS</span><button className="refresh-btn" onClick={loadAdminDashboard}>Refresh</button></div>
