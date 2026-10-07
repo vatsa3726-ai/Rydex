@@ -80,9 +80,8 @@ function App() {
     const watchId = navigator.geolocation.watchPosition(async ({ coords }) => {
       try {
         await fetch(`${API_URL}/providers/drivers/${driverId}/location`, {
-          headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }),
         })
       } catch {}
@@ -457,7 +456,7 @@ function App() {
         description: `${booking.rideName} ride`,
         order_id: data.orderId,
         prefill: { name: 'Rydex Customer' },
-        theme: { color: '#19b978' },
+        theme: { color: '#ff1493' },
         handler: async (payment) => {
           try {
             const verify = await fetch(`${API_URL}/payments/verify`, {
