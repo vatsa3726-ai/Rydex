@@ -18,6 +18,10 @@ jobs:
         run: npm install
       - name: Generate Prisma client
         run: npx prisma generate
+      - name: Prisma schema validation
+        run: npm run db:validate
+      - name: Security tests
+        run: npm test
       - name: Lint
         run: npm run lint
       - name: Build frontend
