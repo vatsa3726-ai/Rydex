@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import RydexMap from './RydexMap.jsx'
+import { trackAnalytics } from './analytics.js'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
 
@@ -50,6 +51,7 @@ function App() {
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
   const [adminData, setAdminData] = useState(null)
+  const [adminAnalytics, setAdminAnalytics] = useState(null)
   const [adminLoading, setAdminLoading] = useState(false)
   const [adminProviders, setAdminProviders] = useState([])
   const [partnerApplications, setPartnerApplications] = useState([])
@@ -135,6 +137,15 @@ function App() {
     }
   }
 
+  const loadAdminAnalytics = async () => {
+    if (!adminToken) return
+    try {
+      const response = await fetch(`${API_URL}/admin/analytics?days=30`, { headers: { 'X-Admin-Token': adminToken } })
+      const data = await response.json()
+      if (response.ok) setAdminAnalytics(data)
+    } catch {}
+  }
+
   const loadPartnerApplications = async () => {
     if (!adminToken) return
     const response = await fetch(`${API_URL}/api/admin/partner-applications`, { headers: { 'X-Admin-Token': adminToken } })
@@ -215,7 +226,7 @@ function App() {
 
   const openAdminDashboard = async () => {
     setAdminOpen(true)
-    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders(); await loadPartnerApplications() }
+    if (adminToken) { await loadAdminDashboard(); await loadAdminProviders(); await loadPartnerApplications(); await loadAdminAnalytics() }
   }
 
   const openProviderPortal = async () => {
@@ -483,6 +494,9 @@ function App() {
       if (!response.ok) throw new Error('API request failed')
       const data = await response.json()
       setRides(data.rides)
+      const city = pickup.split(',').slice(-2).join(',').trim() || null
+      trackAnalytics(API_URL, 'SEARCH', { pickup, destination, city, metadata: { quoteCount: data.rides?.length || 0 } })
+      trackAnalytics(API_URL, 'RESULTS_SHOWN', { pickup, destination, city, metadata: { quoteCount: data.rides?.length || 0 } })
     } catch {
       setRides(demoRides)
       setApiNotice('Demo mode: start the Rydex API on port 4000 for live backend data.')
@@ -641,6 +655,15 @@ function App() {
 
   const handleProviderHandoff = () => {
     if (!selected) return
+    const city = pickup.split(',').slice(-2).join(',').trim() || null
+    trackAnalytics(API_URL, 'HANDOFF', {
+      providerCode: selected.providerCode,
+      rideType: selected.rideType || selected.id,
+      pickup,
+      destination,
+      city,
+      metadata: { bookingUrlConfigured: Boolean(selected.bookingUrl), fare: selected.fare },
+    })
     if (selected.bookingUrl) {
       window.open(selected.bookingUrl, '_blank', 'noopener,noreferrer')
       setApiNotice(`Opening ${selected.provider} to complete your ride.`)
@@ -774,7 +797,19 @@ function App() {
                             <p>{ride.seats} seats · Pickup in {ride.pickupEta} min · Trip {ride.durationMin || '—'} min</p>
                           </div>
                           <div className="ride-price"><strong>₹{ride.fare}</strong><span>provider price{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span></div>
-                          <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>{selected?.id === ride.id ? 'Selected' : 'Choose'}</button>
+                          <button className="select-btn" onClick={() => {
+  setSelected(ride)
+  setBooking(null)
+  const city = pickup.split(',').slice(-2).join(',').trim() || null
+  trackAnalytics(API_URL, 'PROVIDER_SELECTED', {
+    providerCode: ride.providerCode,
+    rideType: ride.rideType || ride.id,
+    pickup,
+    destination,
+    city,
+    metadata: { fare: ride.fare, pickupEta: ride.pickupEta },
+  })
+}}>{selected?.id === ride.id ? 'Selected' : 'Choose'}</button>
                         </article>
                       })}
                     </div>
@@ -993,6 +1028,20 @@ function App() {
   </div>
 )}
 <div className="provider-section">
+                  <div className="queue-title"><span>ANALYTICS · 30 DAYS</span><button className="refresh-btn" onClick={loadAdminAnalytics}>Refresh</button></div>
+                  <div className="provider-kpis">
+                    <div><span>Searches</span><strong>{adminAnalytics?.totals?.searches ?? 0}</strong><small>Ride searches</small></div>
+                    <div><span>Selections</span><strong>{adminAnalytics?.totals?.providerSelections ?? 0}</strong><small>Provider choices</small></div>
+                    <div><span>Handoffs</span><strong>{adminAnalytics?.totals?.handoffs ?? 0}</strong><small>Provider visits</small></div>
+                    <div><span>Conversion</span><strong>{adminAnalytics?.conversionRate ?? 0}%</strong><small>Search → handoff</small></div>
+                  </div>
+                  <div className="analytics-grid">
+                    <div><strong>Top providers</strong>{(adminAnalytics?.providers || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                    <div><strong>Popular ride types</strong>{(adminAnalytics?.rideTypes || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                    <div><strong>Top cities</strong>{(adminAnalytics?.cities || []).map((item) => <span key={item.name}>{item.name}<b>{item.count}</b></span>)}</div>
+                  </div>
+                </div>
+                <div className="provider-section">
                   <div className="queue-title"><span>PARTNER APPLICATIONS</span><button className="refresh-btn" onClick={loadPartnerApplications}>Refresh</button></div>
                   <div className="admin-provider-list">{partnerApplications.length ? partnerApplications.map((app) => <article className="history-card" key={app.id}>
                     <div className="history-top"><strong>{app.companyName}</strong><span className={`status-pill status-${String(app.status).toLowerCase()}`}>{app.status}</span></div>

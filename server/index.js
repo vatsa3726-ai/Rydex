@@ -109,6 +109,31 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: database !== 'unavailable', service: 'rydex-api', platformFee: PLATFORM_FEE, database })
 })
 
+app.post('/api/analytics/events', async (req, res) => {
+  const allowed = new Set(['SEARCH', 'RESULTS_SHOWN', 'PROVIDER_SELECTED', 'HANDOFF'])
+  const eventType = String(req.body?.eventType || '').toUpperCase()
+  if (!allowed.has(eventType)) return res.status(400).json({ error: 'Invalid analytics event.' })
+
+  const clean = (value, max = 180) => {
+    const text = String(value ?? '').trim()
+    return text ? text.slice(0, max) : null
+  }
+  const data = {
+    eventType,
+    providerCode: clean(req.body?.providerCode, 80),
+    rideType: clean(req.body?.rideType, 40),
+    pickup: clean(req.body?.pickup),
+    destination: clean(req.body?.destination),
+    city: clean(req.body?.city, 100),
+    sessionKey: clean(req.body?.sessionKey, 120),
+    metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : undefined,
+  }
+  if (prisma) {
+    try { await prisma.analyticsEvent.create({ data }) } catch (error) { console.error('Analytics event failed:', error.message) }
+  }
+  res.status(202).json({ ok: true })
+})
+
 app.post('/api/rides/search', async (req, res) => {
   const pickup = String(req.body.pickup || '').trim()
   const destination = String(req.body.destination || '').trim()
@@ -368,6 +393,41 @@ app.patch('/api/admin/providers/:code', async (req, res) => {
     const provider = await prisma.provider.update({ where: { code: req.params.code }, data })
     res.json({ provider })
   } catch { res.status(404).json({ error: 'Provider not found.' }) }
+})
+
+app.get('/api/admin/analytics', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  const suppliedToken = String(req.headers['x-admin-token'] || '')
+  if (!expectedToken || suppliedToken !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.json({ days: 30, totals: {}, providers: [], rideTypes: [], cities: [], conversionRate: 0 })
+
+  const days = Math.min(Math.max(Number(req.query.days || 30), 1), 90)
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  try {
+    const events = await prisma.analyticsEvent.findMany({
+      where: { createdAt: { gte: since } },
+      select: { eventType: true, providerCode: true, rideType: true, city: true },
+    })
+    const count = (type) => events.filter((item) => item.eventType === type).length
+    const group = (key, limit = 8) => {
+      const map = new Map()
+      for (const item of events) if (item[key]) map.set(item[key], (map.get(item[key]) || 0) + 1)
+      return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => ({ name, count }))
+    }
+    const searches = count('SEARCH')
+    const handoffs = count('HANDOFF')
+    res.json({
+      days,
+      totals: { searches, resultsShown: count('RESULTS_SHOWN'), providerSelections: count('PROVIDER_SELECTED'), handoffs },
+      providers: group('providerCode'),
+      rideTypes: group('rideType'),
+      cities: group('city'),
+      conversionRate: searches ? Number(((handoffs / searches) * 100).toFixed(1)) : 0,
+    })
+  } catch (error) {
+    console.error('Analytics dashboard failed:', error.message)
+    res.status(503).json({ error: 'Unable to load analytics.' })
+  }
 })
 
 app.get('/api/admin/overview', async (req, res) => {
