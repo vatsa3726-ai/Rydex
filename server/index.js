@@ -395,6 +395,41 @@ app.patch('/api/admin/providers/:code', async (req, res) => {
   } catch { res.status(404).json({ error: 'Provider not found.' }) }
 })
 
+app.get('/api/admin/analytics', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  const suppliedToken = String(req.headers['x-admin-token'] || '')
+  if (!expectedToken || suppliedToken !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.json({ days: 30, totals: {}, providers: [], rideTypes: [], cities: [], conversionRate: 0 })
+
+  const days = Math.min(Math.max(Number(req.query.days || 30), 1), 90)
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+  try {
+    const events = await prisma.analyticsEvent.findMany({
+      where: { createdAt: { gte: since } },
+      select: { eventType: true, providerCode: true, rideType: true, city: true },
+    })
+    const count = (type) => events.filter((item) => item.eventType === type).length
+    const group = (key, limit = 8) => {
+      const map = new Map()
+      for (const item of events) if (item[key]) map.set(item[key], (map.get(item[key]) || 0) + 1)
+      return [...map.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([name, count]) => ({ name, count }))
+    }
+    const searches = count('SEARCH')
+    const handoffs = count('HANDOFF')
+    res.json({
+      days,
+      totals: { searches, resultsShown: count('RESULTS_SHOWN'), providerSelections: count('PROVIDER_SELECTED'), handoffs },
+      providers: group('providerCode'),
+      rideTypes: group('rideType'),
+      cities: group('city'),
+      conversionRate: searches ? Number(((handoffs / searches) * 100).toFixed(1)) : 0,
+    })
+  } catch (error) {
+    console.error('Analytics dashboard failed:', error.message)
+    res.status(503).json({ error: 'Unable to load analytics.' })
+  }
+})
+
 app.get('/api/admin/overview', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   const suppliedToken = String(req.headers['x-admin-token'] || '')
