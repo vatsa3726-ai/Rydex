@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "server": "node server/index.js",
+    "sandbox:provider": "node sandbox-provider/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev"
   },
