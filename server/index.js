@@ -30,16 +30,29 @@ app.get('/api/health', async (_req, res) => {
 app.post('/api/rides/search', async (req, res) => {
   const pickup = String(req.body.pickup || '').trim()
   const destination = String(req.body.destination || '').trim()
+  const pickupLat = Number(req.body.pickupLat)
+  const pickupLng = Number(req.body.pickupLng)
+  const destinationLat = Number(req.body.destinationLat)
+  const destinationLng = Number(req.body.destinationLng)
 
   if (!pickup || !destination) {
     return res.status(400).json({ error: 'Pickup and destination are required.' })
   }
 
-  const quotes = await getRideQuotes({ pickup, destination })
+  const hasCoordinates = [pickupLat, pickupLng, destinationLat, destinationLng].every(Number.isFinite)
+
+  const quotes = await getRideQuotes({
+    pickup,
+    destination,
+    coordinates: hasCoordinates
+      ? { pickupLat, pickupLng, destinationLat, destinationLng }
+      : null,
+  })
   res.json({
     pickup,
     destination,
     platformFee: PLATFORM_FEE,
+    coordinates: hasCoordinates ? { pickupLat, pickupLng, destinationLat, destinationLng } : null,
     rides: quotes.map((ride) => ({
       ...ride,
       total: ride.fare + PLATFORM_FEE,

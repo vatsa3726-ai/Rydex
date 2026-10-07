@@ -39,7 +39,13 @@ model Booking {
   userId         String?
   providerId     String?
   pickup         String
+  pickupLat      Float?
+  pickupLng      Float?
   destination    String
+  destinationLat Float?
+  destinationLng Float?
+  distanceKm     Float?
+  durationMin    Int?
   rideType       String
   rideName       String
   fare           Int
