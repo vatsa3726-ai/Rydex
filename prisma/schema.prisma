@@ -48,6 +48,7 @@ model PartnerApplication {
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
   partnerPasswordHash String?
+  partnerSessions PartnerSession[]
   @@index([status])
   @@index([createdAt])
 }
