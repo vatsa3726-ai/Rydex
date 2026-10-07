@@ -476,7 +476,14 @@ app.get('/api/admin/partner-applications', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
   if (!prisma) return res.json({ applications: [] })
-  const applications = await prisma.partnerApplication.findMany({ orderBy: { createdAt: 'desc' } })
+  const applications = await prisma.partnerApplication.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, companyName: true, contactName: true, email: true, phone: true, website: true,
+      cities: true, rideTypes: true, integrationType: true, notes: true, status: true,
+      providerCode: true, onboardingStep: true, createdAt: true, updatedAt: true,
+    },
+  })
   res.json({ applications })
 })
 
@@ -682,8 +689,29 @@ app.get('/api/admin/providers', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
   if (!prisma) return res.json({ providers: getProviderCatalog().map((provider) => ({ ...provider, active: true, cities: [], rideTypes: [] })) })
-  const providers = await prisma.provider.findMany({ orderBy: { createdAt: 'desc' } })
-  res.json({ providers })
+  const providers = await prisma.provider.findMany({
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true, name: true, code: true, active: true, integrationType: true,
+      bookingUrl: true, cities: true, rideTypes: true, liveApproved: true,
+      liveApprovedAt: true, liveError: true, createdAt: true,
+      connection: { select: { id: true, apiBaseUrl: true, status: true, lastTestedAt: true, lastError: true, apiKey: true, apiSecret: true } },
+    },
+  })
+  res.json({
+    providers: providers.map(({ connection, ...provider }) => ({
+      ...provider,
+      connection: connection ? {
+        id: connection.id,
+        apiBaseUrl: connection.apiBaseUrl,
+        status: connection.status,
+        lastTestedAt: connection.lastTestedAt,
+        lastError: connection.lastError,
+        apiKeyConfigured: Boolean(connection.apiKey),
+        apiSecretConfigured: Boolean(connection.apiSecret),
+      } : null,
+    })),
+  })
 })
 
 app.post('/api/admin/providers', async (req, res) => {
