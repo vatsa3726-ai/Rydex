@@ -290,3 +290,14 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
 .ride-title{flex-wrap:wrap}
 
 .provider-handoff-note{padding:11px 12px;border:1px solid rgba(255,194,61,.18);background:rgba(255,194,61,.05);border-radius:11px;color:#bdb3c2;font-size:11px;line-height:1.45}
+
+.comparison-list{display:grid;gap:18px}
+.comparison-group{border:1px solid rgba(255,255,255,.08);border-radius:20px;background:rgba(12,10,18,.45);padding:12px}
+.comparison-group-head{display:flex;align-items:center;justify-content:space-between;padding:8px 7px 12px}
+.comparison-group-head>div{display:flex;align-items:center;gap:10px}
+.comparison-group-head h3{margin:0;color:#fff;font-size:17px}.comparison-group-head small{color:#807687;font-size:10px}
+.ride-category{width:38px;height:38px;display:grid;place-items:center;border-radius:12px;background:rgba(255,20,147,.09);font-size:20px}
+.comparison-hint{color:#ff62b3;font-size:9px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}
+.comparison-group .ride-list{gap:8px}
+.comparison-group .ride-card{box-shadow:none;background:rgba(255,255,255,.025)}
+@media(max-width:600px){.comparison-group{padding:8px;border-radius:17px}.comparison-group-head{padding:7px 5px 10px}.comparison-hint{display:none}}
