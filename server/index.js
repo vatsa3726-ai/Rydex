@@ -347,24 +347,35 @@ app.post('/api/partners/apply', async (req, res) => {
 
 app.post('/api/partners/auth/login', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  if (!allowRateLimit(rateLimitKey('partner-login', req, String(req.body?.applicationId || '').trim()), PARTNER_LOGIN_MAX_REQUESTS)) {
+    return res.status(429).json({ error: 'Too many login attempts. Try again later.' })
+  }
   const applicationId = String(req.body?.applicationId || '').trim()
   const password = String(req.body?.password || '')
-  if (!applicationId || !password) return res.status(400).json({ error: 'Application ID and password are required.' })
+  if (!applicationId || password.length < 8) return res.status(400).json({ error: 'Application ID and a valid password are required.' })
 
   const application = await prisma.partnerApplication.findUnique({ where: { id: applicationId } })
-  if (!application || application.status !== 'APPROVED' || !application.providerCode) return res.status(401).json({ error: 'Partner account is not approved.' })
-  if (!application.partnerPassword || application.partnerPassword !== password) return res.status(401).json({ error: 'Invalid partner credentials.' })
+  if (!application || application.status !== 'APPROVED' || !application.providerCode) return res.status(401).json({ error: 'Invalid partner credentials.' })
+  if (!application.partnerPasswordHash || !verifyPassword(password, application.partnerPasswordHash)) return res.status(401).json({ error: 'Invalid partner credentials.' })
 
   const token = crypto.randomBytes(32).toString('hex')
-  await prisma.partnerSession.create({ data: { applicationId, token, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } })
-  res.json({ token, expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() })
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  await prisma.partnerSession.create({ data: { applicationId, tokenHash: hashToken(token), expiresAt } })
+  res.json({ token, expiresAt: expiresAt.toISOString() })
+})
+
+app.post('/api/partners/auth/logout', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (token) await prisma.partnerSession.updateMany({ where: { tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } })
+  res.json({ ok: true })
 })
 
 app.get('/api/partners/me', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  const session = await prisma.partnerSession.findUnique({ where: { token } })
-  if (!session || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date()) return res.status(401).json({ error: 'Partner session expired.' })
   const application = await prisma.partnerApplication.findUnique({ where: { id: session.applicationId } })
   if (!application) return res.status(404).json({ error: 'Partner account not found.' })
   res.json({ id: application.id, companyName: application.companyName, email: application.email, providerCode: application.providerCode, onboardingStep: application.onboardingStep })
@@ -373,8 +384,8 @@ app.get('/api/partners/me', async (req, res) => {
 app.get('/api/partners/dashboard/:id', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const token = String(req.headers.authorization || '').replace(/^Bearer\\s+/i, '')
-  const session = await prisma.partnerSession.findUnique({ where: { token } })
-  if (!session || session.expiresAt < new Date() || session.applicationId !== req.params.id) return res.status(401).json({ error: 'Partner authentication required.' })
+  const session = await prisma.partnerSession.findUnique({ where: { tokenHash: hashToken(token) } })
+  if (!session || session.revokedAt || session.expiresAt < new Date() || session.applicationId !== req.params.id) return res.status(401).json({ error: 'Partner authentication required.' })
 
   const application = await prisma.partnerApplication.findUnique({
     where: { id: req.params.id },
