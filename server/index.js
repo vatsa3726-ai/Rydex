@@ -3,17 +3,28 @@ import express from 'express'
 import cors from 'cors'
 import crypto from 'node:crypto'
 import { getRideQuotes } from './providers/index.js'
+import { getPrisma, closePrisma } from './db.js'
 
 const app = express()
 const PORT = Number(process.env.PORT || 4000)
 const PLATFORM_FEE = 8
 const bookings = new Map()
+const prisma = getPrisma()
 
 app.use(cors())
 app.use(express.json())
 
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, service: 'rydex-api', platformFee: PLATFORM_FEE })
+app.get('/api/health', async (_req, res) => {
+  let database = 'memory'
+  if (prisma) {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      database = 'postgresql'
+    } catch {
+      database = 'unavailable'
+    }
+  }
+  res.json({ ok: database !== 'unavailable', service: 'rydex-api', platformFee: PLATFORM_FEE, database })
 })
 
 app.post('/api/rides/search', async (req, res) => {
@@ -137,15 +148,63 @@ app.post('/api/bookings', (req, res) => {
   }
 
   bookings.set(booking.id, booking)
+
+  if (prisma) {
+    try {
+      const saved = await prisma.booking.create({
+        data: {
+          id: booking.id,
+          pickup: booking.pickup,
+          destination: booking.destination,
+          rideType: booking.rideId,
+          rideName: booking.rideName,
+          fare: booking.fare,
+          platformFee: booking.platformFee,
+          total: booking.total,
+          status: 'PAYMENT_PENDING',
+        },
+      })
+      return res.status(201).json({ ...booking, createdAt: saved.createdAt.toISOString() })
+    } catch (error) {
+      console.error('Database booking create failed:', error.message)
+      return res.status(503).json({ error: 'Booking could not be saved. Please try again.' })
+    }
+  }
+
   res.status(201).json(booking)
 })
 
-app.get('/api/bookings/:id', (req, res) => {
+app.get('/api/bookings/:id', async (req, res) => {
+  if (prisma) {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: req.params.id } })
+      if (booking) return res.json({
+        ...booking,
+        createdAt: booking.createdAt.toISOString(),
+        updatedAt: booking.updatedAt.toISOString(),
+      })
+    } catch (error) {
+      console.error('Database booking lookup failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load booking.' })
+    }
+  }
+
   const booking = bookings.get(req.params.id)
   if (!booking) return res.status(404).json({ error: 'Booking not found.' })
   res.json(booking)
 })
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Rydex API running on http://localhost:${PORT}`)
+  console.log(`Database: ${prisma ? 'PostgreSQL configured' : 'memory fallback'}`)
 })
+
+const shutdown = async () => {
+  server.close(async () => {
+    await closePrisma()
+    process.exit(0)
+  })
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
