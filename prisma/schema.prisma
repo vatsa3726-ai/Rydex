@@ -134,3 +134,21 @@ model Payment {
   updatedAt       DateTime @updatedAt
   booking         Booking  @relation(fields: [bookingId], references: [id])
 }
+
+model AnalyticsEvent {
+  id           String   @id @default(cuid())
+  eventType    String
+  providerCode String?
+  rideType     String?
+  pickup       String?
+  destination  String?
+  city         String?
+  sessionKey   String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([providerCode, createdAt])
+  @@index([rideType, createdAt])
+  @@index([city, createdAt])
+}
