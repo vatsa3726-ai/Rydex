@@ -310,6 +310,11 @@ app.use('/api/providers', (req, res, next) => {
   next()
 })
 
+app.use('/api/providers/drivers', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex does not operate or assign drivers. Driver operations are handled by the selected provider.' })
+  next()
+})
+
 app.get('/api/providers/earnings', async (req, res) => {
   const providerCode = String(req.query.providerCode || '').trim()
   const from = req.query.from ? new Date(String(req.query.from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
