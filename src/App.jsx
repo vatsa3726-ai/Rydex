@@ -60,6 +60,8 @@ function App() {
   const [connectionProvider, setConnectionProvider] = useState(null)
   const [connectionForm, setConnectionForm] = useState({ apiBaseUrl: '', apiKey: '', apiSecret: '' })
   const [connectionStatus, setConnectionStatus] = useState(null)
+  const [quoteTest, setQuoteTest] = useState(null)
+  const [quoteTestLoading, setQuoteTestLoading] = useState(false)
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -217,6 +219,25 @@ function App() {
     if (!response.ok) return setApiNotice(data.error || 'Unable to load provider connection.')
     setConnectionForm({ apiBaseUrl: data.connection?.apiBaseUrl || '', apiKey: '', apiSecret: '' })
     setConnectionStatus(data.connection || { status: 'NOT_CONFIGURED' })
+  }
+
+  const testProviderQuote = async () => {
+    if (!connectionProvider) return
+    setQuoteTestLoading(true)
+    setQuoteTest(null)
+    try {
+      const response = await fetch(`${API_URL}/admin/providers/${encodeURIComponent(connectionProvider.code)}/test-quote`, {
+        method: 'POST',
+        headers: { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup: 'Bengaluru Test Pickup', destination: 'Bengaluru Test Destination', distanceKm: 8 }),
+      })
+      const data = await response.json()
+      setQuoteTest(data)
+    } catch {
+      setQuoteTest({ ok: false, error: 'Unable to run provider quote test.' })
+    } finally {
+      setQuoteTestLoading(false)
+    }
   }
 
   const saveProviderConnection = async () => {
@@ -976,9 +997,17 @@ function App() {
             <input className="auth-input" type="password" value={connectionForm.apiSecret} onChange={(e) => setConnectionForm({ ...connectionForm, apiSecret: e.target.value })} placeholder={connectionStatus?.apiSecretConfigured ? 'Already configured — leave blank' : 'Enter API secret'} />
             <div className="provider-request-meta"><span>Status: {connectionStatus?.status || 'NOT_CONFIGURED'}</span>{connectionStatus?.lastTestedAt && <span>Last tested: {new Date(connectionStatus.lastTestedAt).toLocaleString()}</span>}</div>
             {connectionStatus?.lastError && <small>{connectionStatus.lastError}</small>}
+            {quoteTest && (
+              <div className="provider-test-panel">
+                <strong>{quoteTest.ok ? 'Quote test passed' : 'Quote test failed'}</strong>
+                {quoteTest.latencyMs != null && <span>{quoteTest.latencyMs}ms · HTTP {quoteTest.httpStatus || '—'}</span>}
+                {quoteTest.error && <small>{quoteTest.error}</small>}
+                {quoteTest.providerResponse && <pre>{JSON.stringify(quoteTest.providerResponse, null, 2)}</pre>}
+              </div>
+            )}
             <div className="auth-actions">
               <button className="pay-btn" onClick={saveProviderConnection}>Save connection</button>
-              <button className="provider-action" onClick={testProviderConnection} disabled={!connectionStatus?.apiBaseUrl}>Test connection</button>
+              <button className="provider-action" onClick={testProviderConnection} disabled={!connectionStatus?.apiBaseUrl}>Test connection</button><button className="provider-action" onClick={testProviderQuote} disabled={!connectionStatus?.apiBaseUrl || quoteTestLoading}>${quoteTestLoading ? "Testing quote…" : "Test quote"}</button>
             </div>
           </section>
         </div>
