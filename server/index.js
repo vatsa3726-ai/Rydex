@@ -100,9 +100,10 @@ app.post('/api/payments/verify', (req, res) => {
     .update(`${razorpayOrderId}|${razorpayPaymentId}`)
     .digest('hex')
 
-  const valid = crypto.timingSafeEqual(
+  const received = String(razorpaySignature || '')
+  const valid = received.length === expectedSignature.length && crypto.timingSafeEqual(
     Buffer.from(expectedSignature),
-    Buffer.from(String(razorpaySignature || '')),
+    Buffer.from(received),
   )
 
   if (!valid) return res.status(400).json({ error: 'Payment signature verification failed.' })
