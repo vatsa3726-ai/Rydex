@@ -43,6 +43,7 @@ function App() {
   const [providerQueue, setProviderQueue] = useState([])
   const [providerLoading, setProviderLoading] = useState(false)
   const [providerCode, setProviderCode] = useState('rydex-demo')
+  const [providerToken, setProviderToken] = useState(() => sessionStorage.getItem('rydexProviderToken') || '')
   const [providerEarnings, setProviderEarnings] = useState(null)
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
@@ -55,6 +56,8 @@ function App() {
   const [trackingOpen, setTrackingOpen] = useState(false)
   const [trackingBooking, setTrackingBooking] = useState(null)
   const [tracking, setTracking] = useState(null)
+  const providerHeaders = () => providerToken ? { 'X-Provider-Token': providerToken } : {};
+
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
   })
@@ -77,6 +80,7 @@ function App() {
     const watchId = navigator.geolocation.watchPosition(async ({ coords }) => {
       try {
         await fetch(`${API_URL}/providers/drivers/${driverId}/location`, {
+          headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }),
@@ -90,9 +94,9 @@ function App() {
     setProviderLoading(true)
     try {
       const [driversResponse, queueResponse, earningsResponse] = await Promise.all([
-        fetch(`${API_URL}/providers/drivers`),
-        fetch(`${API_URL}/providers/bookings?status=CONFIRMED`),
-        fetch(`${API_URL}/providers/earnings?providerCode=${encodeURIComponent(providerCode)}`),
+        fetch(`${API_URL}/providers/drivers`, { headers: providerHeaders() }),
+        fetch(`${API_URL}/providers/bookings?status=CONFIRMED`, { headers: providerHeaders() }),
+        fetch(`${API_URL}/providers/earnings?providerCode=${encodeURIComponent(providerCode)}`, { headers: providerHeaders() }),
       ])
       const driversData = await driversResponse.json()
       const queueData = await queueResponse.json()
@@ -139,7 +143,7 @@ function App() {
   const loadDriverRide = async () => {
     if (!driverId) return
     try {
-      const response = await fetch(`${API_URL}/providers/drivers/${driverId}/rides`)
+      const response = await fetch(`${API_URL}/providers/drivers/${driverId}/rides`, { headers: providerHeaders() })
       const data = await response.json()
       if (response.ok) setDriverRide(data.bookings?.[0] || null)
     } catch {}
@@ -148,6 +152,7 @@ function App() {
   const updateDriverRideStatus = async (status) => {
     if (!driverId || !driverRide) return
     const response = await fetch(`${API_URL}/providers/drivers/${driverId}/status`, {
+      headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bookingId: driverRide.id, status }),
@@ -176,6 +181,7 @@ function App() {
   const registerDemoDriver = async () => {
     try {
       const response = await fetch(`${API_URL}/providers/drivers`, {
+        headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: 'Rydex Demo Driver', phone: '+919999999999', vehicleType: 'Cab', vehicleNumber: 'KA01RYDEX' }),
@@ -195,6 +201,7 @@ function App() {
   const toggleDriverAvailability = async () => {
     if (!driverId) return
     const response = await fetch(`${API_URL}/providers/drivers/${driverId}/availability`, {
+      headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ available: !driverAvailable }),
@@ -206,6 +213,7 @@ function App() {
   const acceptDriverBooking = async (bookingId) => {
     if (!driverId) return
     const response = await fetch(`${API_URL}/providers/drivers/${driverId}/accept`, {
+      headers: { ...providerHeaders(), 'Content-Type': 'application/json' },
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bookingId }),
@@ -869,6 +877,7 @@ function App() {
             </div>
             <div className="provider-access-row">
               <div><label>Partner code</label><input value={providerCode} onChange={(event) => setProviderCode(event.target.value)} placeholder="rydex-demo" /></div>
+              <div><label>Access token</label><input type="password" value={providerToken} onChange={(event) => { setProviderToken(event.target.value); sessionStorage.setItem('rydexProviderToken', event.target.value) }} placeholder="Optional in demo" /></div>
               <button className="refresh-btn provider-load-btn" onClick={loadProviderPortal}>Load partner data</button>
             </div>
             <div className="provider-kpis">
