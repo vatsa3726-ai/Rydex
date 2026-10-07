@@ -359,7 +359,7 @@ app.get('/api/auth/me', async (req, res) => {
 })
 
 app.post('/api/bookings', async (req, res) => {
-  const { pickup, destination, rideId, rideName, fare, phone } = req.body
+  const { pickup, destination, rideId, rideName, fare, phone, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
   const numericFare = Number(fare)
   const normalizedPhone = String(phone || '').replace(/\s+/g, '')
 
@@ -371,11 +371,15 @@ app.post('/api/bookings', async (req, res) => {
     return res.status(400).json({ error: 'Enter a valid mobile number.' })
   }
 
+  const routeCoords = [pickupLat, pickupLng, destinationLat, destinationLng].map(Number)
+  const hasRouteCoords = routeCoords.every(Number.isFinite)
+
   const booking = {
     id: `RDX-${crypto.randomUUID().slice(0, 8).toUpperCase()}`,
     status: 'PAYMENT_PENDING',
     pickup,
     destination,
+    ...(hasRouteCoords ? { pickupLat: routeCoords[0], pickupLng: routeCoords[1], destinationLat: routeCoords[2], destinationLng: routeCoords[3] } : {}),
     rideId,
     rideName,
     fare: numericFare,
@@ -400,6 +404,10 @@ app.post('/api/bookings', async (req, res) => {
           userId: user.id,
           pickup: booking.pickup,
           destination: booking.destination,
+          pickupLat: booking.pickupLat,
+          pickupLng: booking.pickupLng,
+          destinationLat: booking.destinationLat,
+          destinationLng: booking.destinationLng,
           rideType: booking.rideId,
           rideName: booking.rideName,
           fare: booking.fare,
