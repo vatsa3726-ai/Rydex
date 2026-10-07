@@ -61,6 +61,20 @@ function App() {
       })
   }, [])
 
+  useEffect(() => {
+    if (!driverId || !driverRide || !navigator.geolocation) return undefined
+    const watchId = navigator.geolocation.watchPosition(async ({ coords }) => {
+      try {
+        await fetch(`${API_URL}/providers/drivers/${driverId}/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ latitude: coords.latitude, longitude: coords.longitude }),
+        })
+      } catch {}
+    }, () => {}, { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 })
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [driverId, driverRide?.id])
+
   const loadDriverRide = async () => {
     if (!driverId) return
     try {
