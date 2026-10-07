@@ -401,6 +401,8 @@ app.post('/api/bookings', async (req, res) => {
     return res.status(400).json({ error: 'Enter a valid mobile number.' })
   }
 
+  if (normalizedPhone !== session.phone) return res.status(403).json({ error: 'Booking phone must match your signed-in number.' })
+
   const routeCoords = [pickupLat, pickupLng, destinationLat, destinationLng].map(Number)
   const hasRouteCoords = routeCoords.every(Number.isFinite)
   const routeEstimate = hasRouteCoords ? await getRouteEstimate({ pickupLat: routeCoords[0], pickupLng: routeCoords[1], destinationLat: routeCoords[2], destinationLng: routeCoords[3] }) : null
@@ -430,7 +432,7 @@ app.post('/api/bookings', async (req, res) => {
       })
 
       const saved = await prisma.booking.create({
-        data: { userId: session.userId, 
+        data: {
           id: booking.id,
           userId: user.id,
           pickup: booking.pickup,
