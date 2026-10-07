@@ -32,12 +32,32 @@ model Provider {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   bookings    Booking[]
+  drivers     Driver[]
+}
+
+model Driver {
+  id            String   @id @default(cuid())
+  providerId    String?
+  phone         String   @unique
+  name          String
+  vehicleType   String
+  vehicleNumber String?
+  available     Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  provider Provider? @relation(fields: [providerId], references: [id])
+  bookings Booking[]
+
+  @@index([providerId])
+  @@index([available])
 }
 
 model Booking {
   id             String        @id @default(cuid())
   userId         String?
   providerId     String?
+  driverId       String?
   pickup         String
   pickupLat      Float?
   pickupLng      Float?
@@ -60,6 +80,7 @@ model Booking {
 
   user     User?     @relation(fields: [userId], references: [id])
   provider Provider? @relation(fields: [providerId], references: [id])
+  driver   Driver?   @relation(fields: [driverId], references: [id])
   payment  Payment?
 
   @@index([userId])
