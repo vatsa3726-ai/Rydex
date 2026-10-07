@@ -545,7 +545,17 @@ function App() {
     }
   }
 
-  const total = selected ? selected.fare + 8 : 0
+  const handleProviderHandoff = () => {
+    if (!selected) return
+    if (selected.bookingUrl) {
+      window.open(selected.bookingUrl, '_blank', 'noopener,noreferrer')
+      setApiNotice(`Opening ${selected.provider} to complete your ride.`)
+      return
+    }
+    setApiNotice(`${selected.provider} is currently a demo comparison source. Its official booking link will be connected when the provider partnership/API is available.`)
+  }
+
+  const total = selected ? selected.fare : 0
 
   return (
     <div className="app-shell">
@@ -664,8 +674,8 @@ function App() {
                       <p>{ride.provider} · {ride.seats} seats · Pickup in {ride.pickupEta || ride.eta} min · Trip {ride.durationMin || '—'} min</p>
                     </div>
                     <div className="ride-price">
-                      <strong>₹{ride.fare + 8}</strong>
-                      <span>incl. ₹8 fee{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span>
+                      <strong>₹{ride.fare}</strong>
+                      <span>provider price{ride.distanceKm ? ` · ${ride.distanceKm} km` : ''}</span>
                     </div>
                     <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>
                       {selected?.id === ride.id ? 'Selected' : 'Select'}
@@ -740,15 +750,15 @@ function App() {
                       <small>Used for booking updates and driver contact.</small>
                     </div>
                     <div className="price-breakdown">
-                      <div><span>Ride fare</span><strong>₹{selected.fare}</strong></div>
-                      <div><span>Rydex platform fee</span><strong>₹8</strong></div>
+                      <div><span>Provider fare</span><strong>₹{selected.fare}</strong></div>
+                      <div><span>Rydex platform fee</span><strong>₹0</strong></div>
                       <hr />
-                      <div className="total"><span>Total</span><strong>₹{total}</strong></div>
+                      <div className="total"><span>Pay provider</span><strong>₹{total}</strong></div>
                     </div>
-                    <button className="pay-btn" onClick={createBooking} disabled={loading}>
-                      {loading ? 'Creating booking…' : 'Continue to payment'} <span>→</span>
+                    <button className="pay-btn" onClick={handleProviderHandoff}>
+                      Continue with {selected.provider} <span>↗</span>
                     </button>
-                    <p className="demo-note">First step creates the booking. The next screen opens Razorpay only when test credentials are configured.</p>
+                    <p className="demo-note">Rydex compares prices. You complete the ride booking and payment with the selected provider.</p>
                   </>
                 ) : (
                   <div className="empty-checkout">
