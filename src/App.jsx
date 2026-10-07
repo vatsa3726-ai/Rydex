@@ -421,6 +421,8 @@ function App() {
           rideName: selected.name,
           fare: selected.fare,
           phone,
+          ...(pickupCoords || {}),
+          ...(destinationCoords || {}),
         }),
       })
 
