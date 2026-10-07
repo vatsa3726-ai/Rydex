@@ -1,4 +1,5 @@
 -- Rydex security/provider schema repair
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ALTER TABLE "Provider"
   ADD COLUMN IF NOT EXISTS "liveApproved" BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS "liveApprovedAt" TIMESTAMP(3),
@@ -16,6 +17,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PartnerSession' AND column_name = 'token')
      AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PartnerSession' AND column_name = 'tokenHash') THEN
     ALTER TABLE "PartnerSession" RENAME COLUMN "token" TO "tokenHash";
+    UPDATE "PartnerSession" SET "tokenHash" = encode(digest("tokenHash", 'sha256'), 'hex');
   END IF;
 END $;
 
@@ -56,6 +58,7 @@ CREATE TABLE IF NOT EXISTS "PartnerSession" (
   CONSTRAINT "PartnerSession_pkey" PRIMARY KEY ("id")
 );
 
+DROP INDEX IF EXISTS "PartnerSession_token_key";
 CREATE UNIQUE INDEX IF NOT EXISTS "PartnerSession_tokenHash_key" ON "PartnerSession"("tokenHash");
 CREATE INDEX IF NOT EXISTS "PartnerSession_applicationId_idx" ON "PartnerSession"("applicationId");
 CREATE INDEX IF NOT EXISTS "PartnerSession_expiresAt_idx" ON "PartnerSession"("expiresAt");
