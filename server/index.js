@@ -157,7 +157,7 @@ app.post('/api/rides/search', async (req, res) => {
     try {
       configuredProviders = await prisma.provider.findMany({
         where: { active: true },
-        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true, connection: { select: { apiBaseUrl: true, apiKey: true, apiSecret: true, status: true } } },
+        select: { code: true, name: true, integrationType: true, bookingUrl: true, cities: true, rideTypes: true, liveApproved: true, connection: { select: { apiBaseUrl: true, apiKey: true, apiSecret: true, status: true } } },
         orderBy: { name: 'asc' },
       })
     } catch {}
