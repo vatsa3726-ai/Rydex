@@ -782,9 +782,12 @@ app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
 })
 
 app.get('/api/bookings/:id', async (req, res) => {
+  const session = getSession(req)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
       const booking = await prisma.booking.findUnique({ where: { id: req.params.id } })
+      if (booking && booking.userId !== session.userId) return res.status(403).json({ error: 'You cannot view this booking.' })
       if (booking) return res.json({
         ...booking,
         createdAt: booking.createdAt.toISOString(),
@@ -798,6 +801,7 @@ app.get('/api/bookings/:id', async (req, res) => {
 
   const booking = bookings.get(req.params.id)
   if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+  if (booking.phone !== session.phone) return res.status(403).json({ error: 'You cannot view this booking.' })
   res.json(booking)
 })
 
