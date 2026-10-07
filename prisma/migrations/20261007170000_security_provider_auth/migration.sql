@@ -11,6 +11,14 @@ ALTER TABLE "PartnerApplication"
 UPDATE "PartnerApplication" SET "partnerPasswordHash" = NULL;
 ALTER TABLE "PartnerApplication" DROP COLUMN IF EXISTS "partnerPassword";
 
+DO $
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PartnerSession' AND column_name = 'token')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'PartnerSession' AND column_name = 'tokenHash') THEN
+    ALTER TABLE "PartnerSession" RENAME COLUMN "token" TO "tokenHash";
+  END IF;
+END $;
+
 CREATE TABLE IF NOT EXISTS "ProviderConnection" (
   "id" TEXT NOT NULL,
   "providerId" TEXT NOT NULL,
