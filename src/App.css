@@ -288,3 +288,5 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
 
 .provider-badge{display:inline-flex;align-items:center;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.035);color:#9f95a7;border-radius:999px;padding:3px 7px;font-size:8px;font-weight:800;letter-spacing:.02em}
 .ride-title{flex-wrap:wrap}
+
+.provider-handoff-note{padding:11px 12px;border:1px solid rgba(255,194,61,.18);background:rgba(255,194,61,.05);border-radius:11px;color:#bdb3c2;font-size:11px;line-height:1.45}
