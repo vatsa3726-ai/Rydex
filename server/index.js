@@ -462,6 +462,83 @@ const DRIVER_TRANSITIONS = {
   IN_PROGRESS: 'COMPLETED',
 }
 
+app.post('/api/providers/drivers/:driverId/location', async (req, res) => {
+  const latitude = Number(req.body.latitude)
+  const longitude = Number(req.body.longitude)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return res.status(400).json({ error: 'Valid latitude and longitude are required.' })
+  }
+
+  if (prisma) {
+    try {
+      const driver = await prisma.driver.update({
+        where: { id: req.params.driverId },
+        data: { latitude, longitude, locationAt: new Date() },
+      })
+      return res.json({ id: driver.id, latitude: driver.latitude, longitude: driver.longitude, locationAt: driver.locationAt })
+    } catch {
+      return res.status(404).json({ error: 'Driver not found.' })
+    }
+  }
+
+  const driver = drivers.get(req.params.driverId)
+  if (!driver) return res.status(404).json({ error: 'Driver not found.' })
+  driver.latitude = latitude
+  driver.longitude = longitude
+  driver.locationAt = new Date().toISOString()
+  drivers.set(driver.id, driver)
+  res.json({ id: driver.id, latitude, longitude, locationAt: driver.locationAt })
+})
+
+app.get('/api/bookings/:id/tracking', async (req, res) => {
+  if (prisma) {
+    try {
+      const booking = await prisma.booking.findUnique({
+        where: { id: req.params.id },
+        include: { driver: true },
+      })
+      if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+      return res.json({
+        bookingId: booking.id,
+        status: booking.status,
+        pickup: { lat: booking.pickupLat, lng: booking.pickupLng },
+        destination: { lat: booking.destinationLat, lng: booking.destinationLng },
+        driver: booking.driver ? {
+          id: booking.driver.id,
+          name: booking.driver.name,
+          vehicleType: booking.driver.vehicleType,
+          vehicleNumber: booking.driver.vehicleNumber,
+          latitude: booking.driver.latitude,
+          longitude: booking.driver.longitude,
+          locationAt: booking.driver.locationAt,
+        } : null,
+      })
+    } catch (error) {
+      console.error('Tracking lookup failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load live tracking.' })
+    }
+  }
+
+  const booking = bookings.get(req.params.id)
+  if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+  const driver = booking.driverId ? drivers.get(booking.driverId) : null
+  res.json({
+    bookingId: booking.id,
+    status: booking.status,
+    pickup: { lat: booking.pickupLat || null, lng: booking.pickupLng || null },
+    destination: { lat: booking.destinationLat || null, lng: booking.destinationLng || null },
+    driver: driver ? {
+      id: driver.id,
+      name: driver.name,
+      vehicleType: driver.vehicleType,
+      vehicleNumber: driver.vehicleNumber,
+      latitude: driver.latitude || null,
+      longitude: driver.longitude || null,
+      locationAt: driver.locationAt || null,
+    } : null,
+  })
+})
+
 app.get('/api/providers/drivers/:driverId/rides', async (req, res) => {
   if (prisma) {
     try {
