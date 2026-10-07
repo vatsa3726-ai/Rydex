@@ -527,15 +527,15 @@ app.post('/api/admin/providers/:code/test-quote', async (req, res) => {
 
   const startedAt = Date.now()
   try {
-    const endpoint = new URL(provider.connection.apiBaseUrl)
+    const endpoint = validateProviderUrl(provider.connection.apiBaseUrl)
     endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/quotes'
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(provider.connection.apiKey ? { 'X-API-Key': provider.connection.apiKey } : {}),
-        ...(provider.connection.apiSecret ? { 'X-API-Secret': provider.connection.apiSecret } : {}),
+        ...(provider.connection.apiKey ? { 'X-API-Key': decryptSecret(provider.connection.apiKey) } : {}),
+        ...(provider.connection.apiSecret ? { 'X-API-Secret': decryptSecret(provider.connection.apiSecret) } : {}),
       },
       body: JSON.stringify({
         pickup: req.body?.pickup || 'Test Pickup',
