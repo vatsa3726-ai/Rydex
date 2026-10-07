@@ -62,6 +62,9 @@ function App() {
   const [connectionStatus, setConnectionStatus] = useState(null)
   const [quoteTest, setQuoteTest] = useState(null)
   const [quoteTestLoading, setQuoteTestLoading] = useState(false)
+  const [partnerStatus, setPartnerStatus] = useState(null)
+  const [partnerStatusId, setPartnerStatusId] = useState('')
+
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -208,6 +211,14 @@ function App() {
     if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
     await loadAdminProviders()
     setEditingProvider(null)
+  }
+
+  const loadPartnerStatus = async () => {
+    if (!partnerStatusId.trim()) return
+    const response = await fetch(`${API_URL}/partners/status/${encodeURIComponent(partnerStatusId.trim())}`)
+    const data = await response.json()
+    if (!response.ok) return setApiNotice(data.error || 'Unable to load partner status.')
+    setPartnerStatus(data)
   }
 
   const loadProviderConnection = async (provider) => {
@@ -993,6 +1004,24 @@ function App() {
         <button className="mobile-nav-item" onClick={() => setProviderPortalOpen(true)}><span>◆</span><small>Partners</small></button>
         <button className="mobile-nav-item" onClick={() => user ? signOut() : setAuthOpen(true)}><span>●</span><small>{user ? 'Sign out' : 'Account'}</small></button>
       </nav>
+
+      <section className="partner-status-card">
+        <div>
+          <span className="eyebrow">PARTNER ONBOARDING</span>
+          <h3>Track integration status</h3>
+          <p>Use the application ID received after submitting your partner application.</p>
+        </div>
+        <div className="partner-status-search">
+          <input className="auth-input" value={partnerStatusId} onChange={(e) => setPartnerStatusId(e.target.value)} placeholder="Partner application ID" />
+          <button className="provider-action" onClick={loadPartnerStatus}>Check status</button>
+        </div>
+        {partnerStatus && (
+          <div className="partner-steps">
+            <strong>{partnerStatus.companyName}</strong>
+            {partnerStatus.steps.map((step) => <div className={`partner-step ${step.complete ? 'complete' : ''}`} key={step.id}><span>{step.complete ? '✓' : '○'}</span>{step.label}</div>)}
+          </div>
+        )}
+      </section>
 
       {connectionProvider && (
         <div className="auth-backdrop" role="presentation" onClick={() => setConnectionProvider(null)}>

@@ -330,6 +330,25 @@ app.post('/api/partners/apply', async (req, res) => {
   }
 })
 
+app.get('/api/partners/status/:id', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const application = await prisma.partnerApplication.findUnique({
+    where: { id: req.params.id },
+    select: { id: true, companyName: true, status: true, providerCode: true, onboardingStep: true, integrationType: true, updatedAt: true },
+  })
+  if (!application) return res.status(404).json({ error: 'Partner application not found.' })
+  res.json({
+    ...application,
+    steps: [
+      { id: 'APPLICATION', label: 'Application submitted', complete: true },
+      { id: 'APPROVED', label: 'Partner approved', complete: ['APPROVED','CONNECTION','TESTED','LIVE'].includes(application.onboardingStep) },
+      { id: 'CONNECTION', label: 'API connection', complete: ['CONNECTION','TESTED','LIVE'].includes(application.onboardingStep) },
+      { id: 'TESTED', label: 'Integration tested', complete: ['TESTED','LIVE'].includes(application.onboardingStep) },
+      { id: 'LIVE', label: 'Provider live', complete: application.onboardingStep === 'LIVE' },
+    ],
+  })
+})
+
 app.get('/api/admin/partner-applications', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })

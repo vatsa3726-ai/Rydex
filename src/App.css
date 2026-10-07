@@ -334,3 +334,10 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
   font-size: 11px;
   white-space: pre-wrap;
 }
+
+.partner-status-card { margin: 24px 0; padding: 20px; border-radius: 18px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); }
+.partner-status-search { display:flex; gap:10px; margin-top:14px; }
+.partner-steps { display:grid; gap:8px; margin-top:16px; }
+.partner-step { padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.035); color:rgba(255,255,255,.55); }
+.partner-step.complete { color:#fff; background:rgba(255,70,150,.12); }
+@media (max-width:600px) { .partner-status-search { flex-direction:column; } }
