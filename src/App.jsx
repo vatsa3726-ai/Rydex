@@ -36,6 +36,10 @@ function App() {
   const [bookings, setBookings] = useState([])
   const [bookingsOpen, setBookingsOpen] = useState(false)
   const [bookingsLoading, setBookingsLoading] = useState(false)
+  const [driverConsoleOpen, setDriverConsoleOpen] = useState(false)
+  const [driverId, setDriverId] = useState('')
+  const [driverBookings, setDriverBookings] = useState([])
+  const [driverAvailable, setDriverAvailable] = useState(true)
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
   })
@@ -52,6 +56,63 @@ function App() {
         setUser(null)
       })
   }, [])
+
+  const loadDriverQueue = async () => {
+    try {
+      const response = await fetch(`${API_URL}/providers/bookings?status=CONFIRMED`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to load provider queue.')
+      setDriverBookings(data.bookings || [])
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to load provider queue.')
+    }
+  }
+
+  const registerDemoDriver = async () => {
+    try {
+      const response = await fetch(`${API_URL}/providers/drivers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Rydex Demo Driver', phone: '+919999999999', vehicleType: 'Cab', vehicleNumber: 'KA01RYDEX' }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to register driver.')
+      setDriverId(data.id)
+      setDriverAvailable(data.available)
+      setApiNotice('Demo driver is ready.')
+      await loadDriverQueue()
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to register demo driver.')
+    }
+  }
+
+  const toggleDriverAvailability = async () => {
+    if (!driverId) return
+    const response = await fetch(`${API_URL}/providers/drivers/${driverId}/availability`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ available: !driverAvailable }),
+    })
+    const data = await response.json()
+    if (response.ok) setDriverAvailable(data.available)
+  }
+
+  const acceptDriverBooking = async (bookingId) => {
+    if (!driverId) return
+    const response = await fetch(`${API_URL}/providers/drivers/${driverId}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId }),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      setApiNotice(data.error || 'Unable to accept ride.')
+      return
+    }
+    setApiNotice(`Ride ${data.id} assigned to your driver.`)
+    setDriverAvailable(false)
+    await loadDriverQueue()
+  }
 
   const loadBookings = async () => {
     const token = localStorage.getItem('rydexToken')
@@ -324,6 +385,7 @@ function App() {
         </a>
         <nav>
           <a href="#how">How it works</a>
+          <button className="nav-link-btn" onClick={() => { setDriverConsoleOpen(true); loadDriverQueue() }}>Driver console</button>
           {user && <button className="nav-link-btn" onClick={loadBookings}>{bookingsLoading ? "Loading…" : "My bookings"}</button>}\n          <a href="#support">Support</a>
           <button className="login-btn" onClick={() => user ? signOut() : setAuthOpen(true)}>{user ? 'Sign out' : 'Sign in'}</button>
         </nav>
@@ -556,6 +618,29 @@ function App() {
                 <small>Booking ID: {item.id}</small>
               </article>
             ))}</div> : <div className="empty-history"><div className="empty-icon">↗</div><h3>No bookings yet</h3><p>Your Rydex rides will appear here after your first booking.</p></div>}
+          </section>
+        </div>
+      )}
+
+      {driverConsoleOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setDriverConsoleOpen(false)}>
+          <section className="bookings-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="bookings-header"><div><span className="eyebrow">PROVIDER MODE</span><h2>Driver console</h2></div><button className="auth-close" onClick={() => setDriverConsoleOpen(false)}>×</button></div>
+            {!driverId ? (
+              <div className="empty-history"><div className="empty-icon">🚕</div><h3>Driver demo</h3><p>Register a test driver to preview how providers receive and accept paid rides.</p><button className="pay-btn" onClick={registerDemoDriver}>Register demo driver →</button></div>
+            ) : (
+              <>
+                <div className="driver-status"><div><strong>Rydex Demo Driver</strong><span>Cab · KA01RYDEX</span></div><button className={`availability-btn ${driverAvailable ? 'on' : ''}`} onClick={toggleDriverAvailability}>{driverAvailable ? '● Available' : '○ Offline'}</button></div>
+                <div className="queue-title"><span>CONFIRMED RIDE REQUESTS</span><button className="refresh-btn" onClick={loadDriverQueue}>Refresh</button></div>
+                {driverBookings.length ? <div className="booking-list">{driverBookings.map((item) => (
+                  <article className="history-card" key={item.id}>
+                    <div className="history-top"><strong>{item.rideName}</strong><strong>₹{item.total}</strong></div>
+                    <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
+                    <button className="pay-btn" disabled={!driverAvailable} onClick={() => acceptDriverBooking(item.id)}>{driverAvailable ? 'Accept ride →' : 'Driver offline'}</button>
+                  </article>
+                ))}</div> : <div className="empty-history"><h3>No confirmed requests</h3><p>Paid rides waiting for a driver will appear here.</p></div>}
+              </>
+            )}
           </section>
         </div>
       )}
