@@ -16,6 +16,7 @@ function App() {
   const [pickupCoords, setPickupCoords] = useState(null)
   const [destinationCoords, setDestinationCoords] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
+  const [landmarkQuery, setLandmarkQuery] = useState('')
   const [searched, setSearched] = useState(false)
   const [sort, setSort] = useState('recommended')
   const [rides, setRides] = useState(demoRides)
@@ -263,6 +264,8 @@ function App() {
           </div>
           {apiNotice && <div className="api-notice">{apiNotice}</div>}
         </section>
+
+<section className="landmark-panel"><div className="landmark-copy"><span className="eyebrow">LANDMARK SEARCH</span><h2>Find pickup points people actually use.</h2><p>Search metro stations, malls, hotels, airports, hospitals and popular landmarks.</p><div className="landmark-search"><span>⌕</span><input value={landmarkQuery} onChange={(e) => setLandmarkQuery(e.target.value)} placeholder="Try “MG Road Metro” or “near me”" /></div><div className="landmark-chips">{['Metro stations','Malls','Hotels','Hospitals','Airports'].map((item)=><button key={item} type="button" onClick={()=>setLandmarkQuery(item)}>{item}</button>)}</div></div><div className="map-preview"><div className="map-grid"><span className="map-road road-a"/><span className="map-road road-b"/><span className="map-road road-c"/><span className="map-road road-d"/><span className="map-pin map-pin-main">R</span><span className="map-poi poi-one">M</span><span className="map-poi poi-two">H</span><span className="map-poi poi-three">✦</span><span className="map-label label-one">Metro</span><span className="map-label label-two">Landmark</span></div><div className="map-overlay"><strong>Popular nearby places</strong><span>{landmarkQuery || 'Metro · malls · hotels · hospitals'}</span></div></div></section>
 
         {searched && (
           <section className="results-section">
