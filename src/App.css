@@ -137,3 +137,14 @@ footer { border-top: 1px solid var(--line); padding: 24px 6vw; display: flex; ju
   .feature-strip { grid-template-columns: 1fr; }
   footer { flex-direction: column; }
 }
+
+
+.search-btn:disabled, .pay-btn:disabled { opacity: .65; cursor: wait; }
+.api-notice { margin-top: 12px; padding: 10px 13px; border: 1px solid #dce7df; background: #f1f8f4; color: #4b6658; border-radius: 10px; font-size: 11px; }
+.booking-success { min-height: 280px; display: flex; flex-direction: column; justify-content: center; }
+.success-icon { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 50%; background: #e8f8f1; color: var(--green-dark); font-size: 27px; font-weight: 900; margin-bottom: 18px; }
+.booking-success h3 { margin: 10px 0 5px; font-size: 24px; }
+.booking-id { color: var(--muted); font-size: 12px; margin: 0 0 18px; word-break: break-word; }
+.confirmation-price { border-block: 1px solid var(--line); padding: 14px 0; display: flex; justify-content: space-between; align-items: center; }
+.confirmation-price span { color: var(--muted); font-size: 13px; }
+.confirmation-price strong { font-size: 22px; }
