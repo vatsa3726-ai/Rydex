@@ -522,7 +522,14 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
       data: { providerCode: provider.code, partnerPasswordHash: hashPassword(temporaryPassword) },
     })
   }
-  res.json({ application, provider, ...(temporaryPassword ? { temporaryPassword } : {}) })
+  const safeApplication = {
+    id: application.id, companyName: application.companyName, contactName: application.contactName,
+    email: application.email, phone: application.phone, website: application.website,
+    cities: application.cities, rideTypes: application.rideTypes, integrationType: application.integrationType,
+    notes: application.notes, status: application.status, providerCode: provider?.code || application.providerCode,
+    onboardingStep: application.onboardingStep, createdAt: application.createdAt, updatedAt: application.updatedAt,
+  }
+  res.json({ application: safeApplication, provider, ...(temporaryPassword ? { temporaryPassword } : {}) })
 })
 
 app.post('/api/admin/providers/:code/go-live', async (req, res) => {
