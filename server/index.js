@@ -127,11 +127,16 @@ app.post('/api/payments/verify', (req, res) => {
 })
 
 app.post('/api/bookings', (req, res) => {
-  const { pickup, destination, rideId, rideName, fare } = req.body
+  const { pickup, destination, rideId, rideName, fare, phone } = req.body
   const numericFare = Number(fare)
+  const normalizedPhone = String(phone || '').replace(/\s+/g, '')
 
   if (!pickup || !destination || !rideId || !rideName || !Number.isFinite(numericFare)) {
     return res.status(400).json({ error: 'Complete ride details are required.' })
+  }
+
+  if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone)) {
+    return res.status(400).json({ error: 'Enter a valid mobile number.' })
   }
 
   const booking = {
@@ -151,9 +156,16 @@ app.post('/api/bookings', (req, res) => {
 
   if (prisma) {
     try {
+      const user = await prisma.user.upsert({
+        where: { phone: normalizedPhone },
+        update: {},
+        create: { phone: normalizedPhone },
+      })
+
       const saved = await prisma.booking.create({
         data: {
           id: booking.id,
+          userId: user.id,
           pickup: booking.pickup,
           destination: booking.destination,
           rideType: booking.rideId,
@@ -164,14 +176,14 @@ app.post('/api/bookings', (req, res) => {
           status: 'PAYMENT_PENDING',
         },
       })
-      return res.status(201).json({ ...booking, createdAt: saved.createdAt.toISOString() })
+      return res.status(201).json({ ...booking, phone: normalizedPhone, userId: user.id, createdAt: saved.createdAt.toISOString() })
     } catch (error) {
       console.error('Database booking create failed:', error.message)
       return res.status(503).json({ error: 'Booking could not be saved. Please try again.' })
     }
   }
 
-  res.status(201).json(booking)
+  res.status(201).json({ ...booking, phone: normalizedPhone })
 })
 
 app.get('/api/bookings/:id', async (req, res) => {
