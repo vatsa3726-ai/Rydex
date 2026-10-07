@@ -1,8 +1,6 @@
 import { calculateFare, getRideRules } from '../routing.js'
 
-// Provider adapter contract: real partners implement searchQuotes(input).
-// Only use mobility APIs that Rydex is authorized to access.
-const rideTypes = [
+export const rideTypes = [
   { id: 'auto', icon: '🛺', name: 'Auto', seats: '1–3' },
   { id: 'bike', icon: '🏍️', name: 'Bike', seats: '1' },
   { id: 'cab', icon: '🚕', name: 'Cab', seats: '1–4' },
@@ -15,67 +13,174 @@ const demoProviders = [
   { code: 'quickcab-demo', name: 'QuickCab Demo', multiplier: 0.94, etaOffset: 2, bookingUrl: null },
 ]
 
-function buildProviderQuotes(provider, { pickup, destination, route }) {
-  const distanceKm = route?.distanceKm || 0
-  const durationMin = route?.durationMin || 0
-  return rideTypes.map((ride) => {
-    const rule = getRideRules()[ride.id]
-    const baseFare = distanceKm ? calculateFare(ride.id, distanceKm) : rule.minimum
-    const fare = Math.max(rule.minimum, Math.round(baseFare * provider.multiplier))
-    const pickupEta = Math.max(2, Math.min(15, (Math.ceil(durationMin / 5) || 4) + provider.etaOffset))
-    return {
-      id: `${provider.code}-${ride.id}`, providerCode: provider.code, provider: provider.name, providerMode: 'demo',
-      rideType: ride.id, icon: ride.icon, name: ride.name, seats: ride.seats, eta: pickupEta, pickupEta,
-      durationMin, distanceKm, fare, bookingUrl: provider.bookingUrl, route: { pickup, destination },
-    }
-  })
+function buildDemoQuotes(provider, input) {
+  const distanceKm = input.route?.distanceKm || 0
+  const durationMin = input.route?.durationMin || 0
+
+  return rideTypes
+    .filter((ride) => !provider.rideTypes?.length || provider.rideTypes.includes(ride.id))
+    .map((ride) => {
+      const rule = getRideRules()[ride.id]
+      const baseFare = distanceKm ? calculateFare(ride.id, distanceKm) : rule.minimum
+      const fare = Math.max(rule.minimum, Math.round(baseFare * (provider.multiplier || 1)))
+      const pickupEta = Math.max(2, Math.min(15, (Math.ceil(durationMin / 5) || 4) + (provider.etaOffset || 0)))
+
+      return {
+        id: `${provider.code}-${ride.id}`,
+        providerCode: provider.code,
+        provider: provider.name,
+        providerMode: 'demo',
+        quoteSource: 'SANDBOX',
+        isLive: false,
+        rideType: ride.id,
+        icon: ride.icon,
+        name: ride.name,
+        seats: ride.seats,
+        eta: pickupEta,
+        pickupEta,
+        durationMin,
+        distanceKm,
+        fare,
+        bookingUrl: provider.bookingUrl || null,
+        route: { pickup: input.pickup, destination: input.destination },
+      }
+    })
+}
+
+function normalizeProviderQuote(raw, provider, input) {
+  if (!raw || typeof raw !== 'object') return null
+  const rideType = String(raw.rideType || raw.type || '').toLowerCase()
+  const allowed = rideTypes.find((ride) => ride.id === rideType)
+  if (!allowed) return null
+
+  const fare = Number(raw.fare)
+  const eta = Number(raw.pickupEta ?? raw.eta)
+  if (!Number.isFinite(fare) || fare < 0 || !Number.isFinite(eta) || eta < 0) return null
+
+  return {
+    id: String(raw.id || `${provider.code}-${rideType}-${Date.now()}`),
+    providerCode: provider.code,
+    provider: provider.name,
+    providerMode: 'api',
+    quoteSource: 'LIVE',
+    isLive: true,
+    rideType,
+    icon: allowed.icon,
+    name: raw.name || allowed.name,
+    seats: raw.seats || allowed.seats,
+    eta,
+    pickupEta: eta,
+    durationMin: Number(raw.durationMin ?? input.route?.durationMin ?? 0),
+    distanceKm: Number(raw.distanceKm ?? input.route?.distanceKm ?? 0),
+    fare: Math.round(fare),
+    bookingUrl: raw.bookingUrl || provider.bookingUrl || null,
+    providerRideId: raw.providerRideId ? String(raw.providerRideId) : null,
+    route: { pickup: input.pickup, destination: input.destination },
+  }
 }
 
 function createDemoAdapter(provider) {
   return {
     ...provider,
-    integrationType: provider.integrationType || (provider.bookingUrl ? 'BOOKING_LINK' : 'DEMO'),
+    async testConnection() {
+      return { ok: true, status: 'SANDBOX', message: 'Demo provider is available in sandbox mode.' }
+    },
     async searchQuotes(input) {
-      return buildProviderQuotes(provider, input)
+      return buildDemoQuotes(provider, input)
     },
   }
 }
 
-const adapters = demoProviders.map((provider) => createDemoAdapter({
-  ...provider,
-  integrationType: provider.bookingUrl ? 'BOOKING_LINK' : 'DEMO',
-}))
+function createApiAdapter(provider) {
+  const connection = provider.connection
+  return {
+    ...provider,
+    async testConnection() {
+      if (!connection?.apiBaseUrl) return { ok: false, status: 'NOT_CONFIGURED', message: 'API base URL is not configured.' }
+      const response = await fetch(connection.apiBaseUrl, {
+        method: 'GET',
+        headers: buildAuthHeaders(connection),
+        signal: AbortSignal.timeout(8000),
+      })
+      return { ok: response.ok, status: response.ok ? 'CONNECTED' : 'ERROR', httpStatus: response.status }
+    },
+    async searchQuotes(input) {
+      if (!connection?.apiBaseUrl) return []
+      const endpoint = new URL(connection.apiBaseUrl)
+      endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/quotes'
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { ...buildAuthHeaders(connection), 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          pickup: input.pickup,
+          destination: input.destination,
+          coordinates: input.coordinates || null,
+          rideTypes: input.rideTypes || rideTypes.map((ride) => ride.id),
+        }),
+        signal: AbortSignal.timeout(10000),
+      })
+      if (!response.ok) throw new Error(`Provider quote API returned HTTP ${response.status}.`)
+      const payload = await response.json()
+      const quotes = Array.isArray(payload) ? payload : payload.quotes
+      if (!Array.isArray(quotes)) throw new Error('Provider quote response must contain a quotes array.')
+      return quotes.map((quote) => normalizeProviderQuote(quote, provider, input)).filter(Boolean)
+    },
+  }
+}
+
+function buildAuthHeaders(connection) {
+  const headers = { Accept: 'application/json' }
+  if (connection.apiKey) headers['X-API-Key'] = connection.apiKey
+  if (connection.apiSecret) headers['X-API-Secret'] = connection.apiSecret
+  return headers
+}
 
 function createConfiguredAdapter(provider) {
+  const type = String(provider.integrationType || 'DEMO').toUpperCase()
+
+  if (type === 'API' && provider.connection?.status === 'CONNECTED') {
+    return createApiAdapter(provider)
+  }
+
+  if (type === 'BOOKING_LINK') {
+    return {
+      ...provider,
+      async searchQuotes() {
+        return []
+      },
+    }
+  }
+
   return createDemoAdapter({
-    code: provider.code,
-    name: provider.name,
-    bookingUrl: provider.bookingUrl || null,
-    integrationType: provider.integrationType || 'DEMO',
+    ...provider,
     multiplier: 1,
     etaOffset: 0,
   })
 }
 
-export function getProviderAdapter(providerCode) {
-  return adapters.find((adapter) => adapter.code === providerCode) || null
+export function getProviderAdapter(providerCode, providerList = []) {
+  const provider = providerList.find((item) => item.code === providerCode)
+  return provider ? createConfiguredAdapter(provider) : demoProviders.find((item) => item.code === providerCode) ? createDemoAdapter(demoProviders.find((item) => item.code === providerCode)) : null
 }
 
 export async function getRideQuotes(input, configuredProviders = null) {
-  const providerAdapters = configuredProviders?.length
-    ? configuredProviders.map(createConfiguredAdapter)
-    : adapters
-
-  const results = await Promise.all(providerAdapters.map(async (adapter) => {
+  const source = configuredProviders?.length ? configuredProviders : demoProviders
+  const results = await Promise.all(source.map(async (provider) => {
+    const adapter = createConfiguredAdapter(provider)
     const quotes = await adapter.searchQuotes(input)
-    return quotes.map((quote) => normalizeProviderQuote(quote, adapter))
+    return quotes.map((quote) => normalizeProviderQuote(quote, provider, input)).filter(Boolean)
   }))
   return results.flat()
 }
 
 export function getProviderCatalog(providerList = null) {
-  const source = providerList?.length ? providerList.map(createConfiguredAdapter) : adapters
-  return source.map(({ code, name, bookingUrl, integrationType }) => ({ code, name, mode: integrationType.toLowerCase(), bookingUrl, authorizedIntegrationRequired: integrationType !== 'DEMO' }))
-}
-  return adapters.map(({ code, name, bookingUrl, integrationType }) => ({ code, name, mode: integrationType.toLowerCase(), bookingUrl, authorizedIntegrationRequired: integrationType !== 'DEMO' }))
+  const source = providerList?.length ? providerList : demoProviders
+  return source.map((provider) => ({
+    code: provider.code,
+    name: provider.name,
+    mode: String(provider.integrationType || 'DEMO').toLowerCase(),
+    bookingUrl: provider.bookingUrl || null,
+    authorizedIntegrationRequired: provider.integrationType !== 'DEMO',
+    liveQuotesEnabled: String(provider.integrationType || 'DEMO').toUpperCase() === 'API' && provider.connection?.status === 'CONNECTED',
+  }))
 }
