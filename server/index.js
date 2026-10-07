@@ -109,6 +109,31 @@ app.get('/api/health', async (_req, res) => {
   res.json({ ok: database !== 'unavailable', service: 'rydex-api', platformFee: PLATFORM_FEE, database })
 })
 
+app.post('/api/analytics/events', async (req, res) => {
+  const allowed = new Set(['SEARCH', 'RESULTS_SHOWN', 'PROVIDER_SELECTED', 'HANDOFF'])
+  const eventType = String(req.body?.eventType || '').toUpperCase()
+  if (!allowed.has(eventType)) return res.status(400).json({ error: 'Invalid analytics event.' })
+
+  const clean = (value, max = 180) => {
+    const text = String(value ?? '').trim()
+    return text ? text.slice(0, max) : null
+  }
+  const data = {
+    eventType,
+    providerCode: clean(req.body?.providerCode, 80),
+    rideType: clean(req.body?.rideType, 40),
+    pickup: clean(req.body?.pickup),
+    destination: clean(req.body?.destination),
+    city: clean(req.body?.city, 100),
+    sessionKey: clean(req.body?.sessionKey, 120),
+    metadata: req.body?.metadata && typeof req.body.metadata === 'object' ? req.body.metadata : undefined,
+  }
+  if (prisma) {
+    try { await prisma.analyticsEvent.create({ data }) } catch (error) { console.error('Analytics event failed:', error.message) }
+  }
+  res.status(202).json({ ok: true })
+})
+
 app.post('/api/rides/search', async (req, res) => {
   const pickup = String(req.body.pickup || '').trim()
   const destination = String(req.body.destination || '').trim()
