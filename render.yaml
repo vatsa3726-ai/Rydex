@@ -32,6 +32,8 @@ services:
         generateValue: true
       - key: PROVIDER_API_TOKEN
         generateValue: true
+      - key: PROVIDER_CREDENTIAL_KEY
+        generateValue: true
       - key: OTP_DEMO_MODE
         value: "false"
       - key: FRONTEND_ORIGIN
