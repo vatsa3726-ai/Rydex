@@ -547,7 +547,11 @@ function App() {
     }
   }
 
-  const signOut = () => {
+  const signOut = async () => {
+    const token = localStorage.getItem('rydexToken')
+    if (token) {
+      try { await fetch(`${API_URL}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }) } catch {}
+    }
     localStorage.removeItem('rydexToken')
     localStorage.removeItem('rydexUser')
     setUser(null)
