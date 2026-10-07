@@ -144,7 +144,7 @@ app.post('/api/payments/verify', (req, res) => {
 
 app.post('/api/auth/request-otp', (req, res) => {
   const normalizedPhone = String(req.body.phone || '').replace(/\s+/g, '')
-  if (!/^\\+?[1-9]\\d{9,14}$/.test(normalizedPhone)) {
+  if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone)) {
     return res.status(400).json({ error: 'Enter a valid mobile number.' })
   }
 
@@ -165,7 +165,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   const code = String(req.body.code || '').trim()
   const challenge = otpChallenges.get(normalizedPhone)
 
-  if (!/^\\+?[1-9]\\d{9,14}$/.test(normalizedPhone) || !challenge) {
+  if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone) || !challenge) {
     return res.status(400).json({ error: 'Request a new OTP.' })
   }
   if (Date.now() > challenge.expiresAt) {
@@ -197,7 +197,7 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 })
 
 app.get('/api/auth/me', async (req, res) => {
-  const token = String(req.headers.authorization || '').replace(/^Bearer\\s+/i, '')
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   const session = sessions.get(token)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
 
