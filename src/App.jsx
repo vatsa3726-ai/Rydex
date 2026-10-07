@@ -92,7 +92,8 @@ function App() {
         prefill: { name: 'Rydex Customer' },
         theme: { color: '#19b978' },
         handler: async (payment) => {
-          const verify = await fetch(`${API_URL}/payments/verify`, {
+          try {
+            const verify = await fetch(`${API_URL}/payments/verify`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -104,8 +105,13 @@ function App() {
           })
           const result = await verify.json()
           if (!verify.ok) throw new Error(result.error || 'Payment verification failed.')
-          setBooking(result.booking)
-          setApiNotice('Payment verified successfully.')
+            setBooking(result.booking)
+            setApiNotice('Payment verified successfully.')
+          } catch (error) {
+            setApiNotice(error.message || 'Payment verification failed.')
+          } finally {
+            setPaymentLoading(false)
+          }
         },
         modal: { ondismiss: () => setPaymentLoading(false) },
       })
