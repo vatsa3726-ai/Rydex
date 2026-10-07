@@ -241,6 +241,12 @@ function App() {
 
   const createBooking = async () => {
     if (!selected) return
+    if (!user) {
+      setAuthPhone(phone)
+      setAuthNotice('Sign in with your mobile number before booking.')
+      setAuthOpen(true)
+      return
+    }
     if (!/^\+?[1-9]\d{9,14}$/.test(phone.replace(/\s+/g, ''))) {
       setApiNotice('Please enter a valid mobile number before booking.')
       return
