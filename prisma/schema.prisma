@@ -27,10 +27,14 @@ model User {
 
 model Provider {
   id          String   @id @default(cuid())
-  name        String
-  code        String   @unique
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
+  name            String
+  code            String   @unique
+  active          Boolean  @default(true)
+  integrationType String   @default("DEMO")
+  bookingUrl      String?
+  cities          String[] @default([])
+  rideTypes       String[] @default([])
+  createdAt       DateTime @default(now())
   bookings    Booking[]
   drivers     Driver[]
 }
