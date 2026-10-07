@@ -23,6 +23,7 @@ model User {
   name      String?
   createdAt DateTime  @default(now())
   bookings  Booking[]
+  sessions  UserSession[]
 }
 
 enum PartnerApplicationStatus {
@@ -187,5 +188,20 @@ model PartnerSession {
   application PartnerApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([applicationId])
+  @@index([expiresAt])
+}
+
+
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
   @@index([expiresAt])
 }
