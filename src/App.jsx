@@ -910,7 +910,7 @@ function App() {
                 </article>
               ))}</div> : <div className="empty-history"><h3>No pending requests</h3><p>Paid customer bookings waiting for dispatch will appear here.</p></div>}
             </div>
-            <div className="provider-footer-note">Provider earnings and settlement reports are the next layer. This portal currently focuses on fleet visibility and dispatch.</div>
+            <div className="provider-footer-note">Provider earnings are calculated from completed rides. Settlement execution can be connected to your chosen payout workflow after commercial onboarding.</div>
           </section>
         </div>
       )}
