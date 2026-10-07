@@ -11,6 +11,7 @@ const PLATFORM_FEE = 8
 const bookings = new Map()
 const otpChallenges = new Map()
 const sessions = new Map()
+const drivers = new Map()
 const prisma = getPrisma()
 const OTP_TTL_MS = 5 * 60 * 1000
 
@@ -140,6 +141,108 @@ app.post('/api/payments/verify', (req, res) => {
   bookings.set(booking.id, booking)
 
   res.json({ ok: true, booking })
+})
+
+app.post('/api/providers/drivers', async (req, res) => {
+  const { name, phone, vehicleType, vehicleNumber, providerCode = 'rydex-demo' } = req.body
+  const normalizedPhone = String(phone || '').replace(/\s+/g, '')
+  if (!name || !/^\+?[1-9]\d{9,14}$/.test(normalizedPhone) || !vehicleType) {
+    return res.status(400).json({ error: 'Name, valid phone and vehicle type are required.' })
+  }
+
+  if (prisma) {
+    try {
+      const provider = await prisma.provider.upsert({
+        where: { code: providerCode },
+        update: { active: true },
+        create: { code: providerCode, name: providerCode === 'rydex-demo' ? 'Rydex Demo Partner' : providerCode },
+      })
+      const driver = await prisma.driver.upsert({
+        where: { phone: normalizedPhone },
+        update: { name, vehicleType, vehicleNumber: vehicleNumber || null, providerId: provider.id },
+        create: { name, phone: normalizedPhone, vehicleType, vehicleNumber: vehicleNumber || null, providerId: provider.id },
+      })
+      return res.status(201).json(driver)
+    } catch (error) {
+      console.error('Driver registration failed:', error.message)
+      return res.status(503).json({ error: 'Unable to register driver.' })
+    }
+  }
+
+  const driver = { id: `DRV-${crypto.randomUUID().slice(0, 8).toUpperCase()}`, name, phone: normalizedPhone, vehicleType, vehicleNumber: vehicleNumber || null, available: true, providerCode }
+  drivers.set(driver.id, driver)
+  res.status(201).json(driver)
+})
+
+app.get('/api/providers/drivers', async (req, res) => {
+  if (prisma) {
+    try {
+      const list = await prisma.driver.findMany({ where: { available: true }, orderBy: { createdAt: 'asc' } })
+      return res.json({ drivers: list })
+    } catch (error) {
+      console.error('Driver list failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load drivers.' })
+    }
+  }
+  res.json({ drivers: [...drivers.values()].filter((driver) => driver.available) })
+})
+
+app.post('/api/providers/drivers/:driverId/availability', async (req, res) => {
+  const available = Boolean(req.body.available)
+  if (prisma) {
+    try {
+      const driver = await prisma.driver.update({ where: { id: req.params.driverId }, data: { available } })
+      return res.json(driver)
+    } catch {
+      return res.status(404).json({ error: 'Driver not found.' })
+    }
+  }
+  const driver = drivers.get(req.params.driverId)
+  if (!driver) return res.status(404).json({ error: 'Driver not found.' })
+  driver.available = available
+  drivers.set(driver.id, driver)
+  res.json(driver)
+})
+
+app.post('/api/providers/drivers/:driverId/accept', async (req, res) => {
+  const bookingId = String(req.body.bookingId || '')
+  if (!bookingId) return res.status(400).json({ error: 'Booking ID is required.' })
+
+  if (prisma) {
+    try {
+      const [booking, driver] = await Promise.all([
+        prisma.booking.findUnique({ where: { id: bookingId } }),
+        prisma.driver.findUnique({ where: { id: req.params.driverId } }),
+      ])
+      if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+      if (!driver || !driver.available) return res.status(409).json({ error: 'Driver is not available.' })
+      if (booking.status !== 'CONFIRMED') return res.status(409).json({ error: 'Only paid bookings can be accepted.' })
+
+      const updated = await prisma.booking.update({
+        where: { id: bookingId },
+        data: { driverId: driver.id, providerId: driver.providerId, status: 'DRIVER_ASSIGNED', providerRideId: `RIDE-${crypto.randomUUID().slice(0, 8).toUpperCase()}` },
+        include: { driver: true, provider: true },
+      })
+      await prisma.driver.update({ where: { id: driver.id }, data: { available: false } })
+      return res.json(updated)
+    } catch (error) {
+      console.error('Driver assignment failed:', error.message)
+      return res.status(503).json({ error: 'Unable to assign driver.' })
+    }
+  }
+
+  const booking = bookings.get(bookingId)
+  const driver = drivers.get(req.params.driverId)
+  if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+  if (!driver || !driver.available) return res.status(409).json({ error: 'Driver is not available.' })
+  if (booking.status !== 'CONFIRMED') return res.status(409).json({ error: 'Only paid bookings can be accepted.' })
+  booking.status = 'DRIVER_ASSIGNED'
+  booking.driverId = driver.id
+  booking.providerRideId = `RIDE-${crypto.randomUUID().slice(0, 8).toUpperCase()}`
+  driver.available = false
+  bookings.set(booking.id, booking)
+  drivers.set(driver.id, driver)
+  res.json(booking)
 })
 
 app.post('/api/auth/request-otp', (req, res) => {
