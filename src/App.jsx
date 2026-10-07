@@ -21,6 +21,7 @@ function App() {
   const [apiNotice, setApiNotice] = useState('')
   const [booking, setBooking] = useState(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
+  const [phone, setPhone] = useState('')
 
   const sortedRides = useMemo(() => {
     const list = [...rides]
@@ -125,6 +126,10 @@ function App() {
 
   const createBooking = async () => {
     if (!selected) return
+    if (!/^\+?[1-9]\d{9,14}$/.test(phone.replace(/\s+/g, ''))) {
+      setApiNotice('Please enter a valid mobile number before booking.')
+      return
+    }
 
     setLoading(true)
     setApiNotice('')
@@ -139,6 +144,7 @@ function App() {
           rideId: selected.id,
           rideName: selected.name,
           fare: selected.fare,
+          phone,
         }),
       })
 
@@ -288,6 +294,18 @@ function App() {
                     <div className="route-summary">
                       <span>●</span><p>{pickup}</p>
                       <span>◆</span><p>{destination}</p>
+                    </div>
+                    <div className="phone-field">
+                      <label>Mobile number</label>
+                      <input
+                        type="tel"
+                        inputMode="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        autoComplete="tel"
+                      />
+                      <small>Used for booking updates and driver contact.</small>
                     </div>
                     <div className="price-breakdown">
                       <div><span>Ride fare</span><strong>₹{selected.fare}</strong></div>
