@@ -462,6 +462,23 @@ const DRIVER_TRANSITIONS = {
   IN_PROGRESS: 'COMPLETED',
 }
 
+app.get('/api/providers/drivers/:driverId/rides', async (req, res) => {
+  if (prisma) {
+    try {
+      const rides = await prisma.booking.findMany({
+        where: { driverId: req.params.driverId, status: { in: ['DRIVER_ASSIGNED', 'IN_PROGRESS'] } },
+        orderBy: { updatedAt: 'desc' },
+      })
+      return res.json({ bookings: rides })
+    } catch (error) {
+      console.error('Driver rides lookup failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load driver rides.' })
+    }
+  }
+  const rides = [...bookings.values()].filter((booking) => booking.driverId === req.params.driverId && ['DRIVER_ASSIGNED', 'IN_PROGRESS'].includes(booking.status))
+  res.json({ bookings: rides })
+})
+
 app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
   const { bookingId, status } = req.body
   if (!bookingId || !DRIVER_TRANSITIONS[status] && !['DRIVER_ASSIGNED'].includes(status)) {
