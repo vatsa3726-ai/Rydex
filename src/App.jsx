@@ -221,6 +221,18 @@ function App() {
     setConnectionStatus(data.connection || { status: 'NOT_CONFIGURED' })
   }
 
+  const approveProviderLive = async () => {
+    if (!connectionProvider) return
+    const response = await fetch(`${API_URL}/admin/providers/${encodeURIComponent(connectionProvider.code)}/go-live`, {
+      method: 'POST',
+      headers: { 'X-Admin-Token': adminToken },
+    })
+    const data = await response.json()
+    setQuoteTest((current) => ({ ...(current || {}), goLive: data }))
+    if (!response.ok) return setApiNotice(data.error || 'Provider is not ready for live quotes.')
+    setApiNotice('Provider passed the go-live gate and is now LIVE.')
+  }
+
   const testProviderQuote = async () => {
     if (!connectionProvider) return
     setQuoteTestLoading(true)
@@ -1003,11 +1015,12 @@ function App() {
                 {quoteTest.latencyMs != null && <span>{quoteTest.latencyMs}ms · HTTP {quoteTest.httpStatus || '—'}</span>}
                 {quoteTest.error && <small>{quoteTest.error}</small>}
                 {quoteTest.providerResponse && <pre>{JSON.stringify(quoteTest.providerResponse, null, 2)}</pre>}
+                {quoteTest.goLive && <div><strong>{quoteTest.goLive.ok ? '🟢 LIVE approved' : '🟠 Not ready'}</strong><pre>{JSON.stringify(quoteTest.goLive.checks || {}, null, 2)}</pre></div>}
               </div>
             )}
             <div className="auth-actions">
               <button className="pay-btn" onClick={saveProviderConnection}>Save connection</button>
-              <button className="provider-action" onClick={testProviderConnection} disabled={!connectionStatus?.apiBaseUrl}>Test connection</button><button className="provider-action" onClick={testProviderQuote} disabled={!connectionStatus?.apiBaseUrl || quoteTestLoading}>${quoteTestLoading ? "Testing quote…" : "Test quote"}</button>
+              <button className="provider-action" onClick={testProviderConnection} disabled={!connectionStatus?.apiBaseUrl}>Test connection</button><button className="provider-action" onClick={testProviderQuote} disabled={!connectionStatus?.apiBaseUrl || quoteTestLoading}>${quoteTestLoading ? "Testing quote…" : "Test quote"}</button><button className="pay-btn" onClick={approveProviderLive} disabled={connectionStatus?.status !== 'CONNECTED' || !quoteTest?.ok}>Go LIVE</button>
             </div>
           </section>
         </div>
