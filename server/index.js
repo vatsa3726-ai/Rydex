@@ -56,8 +56,7 @@ async function savePaymentOrder(bookingId, order) {
 app.use(cors({
   origin: process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.split(',').map((item) => item.trim()) : true,
 }))
-app.use(express.raw({ type: 'application/json', limit: '1mb' }))
-app.post('/api/payments/webhook', async (req, res) => {
+app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET
   if (!secret) return res.status(503).json({ error: 'Webhook secret is not configured.' })
   const signature = String(req.headers['x-razorpay-signature'] || '')
