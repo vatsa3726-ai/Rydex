@@ -497,21 +497,25 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   let provider = null
   let temporaryPassword = null
   if (status === 'APPROVED') {
-    const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
-    let code = baseCode
-    let suffix = 2
-    while (await prisma.provider.findUnique({ where: { code } })) code = `${baseCode}-${suffix++}`
-    provider = await prisma.provider.create({
-      data: {
-        name: application.companyName,
-        code,
-        active: false,
-        integrationType: application.integrationType,
-        cities: application.cities,
-        rideTypes: application.rideTypes,
-        bookingUrl: null,
-      },
-    })
+    if (application.providerCode) {
+      provider = await prisma.provider.findUnique({ where: { code: application.providerCode } })
+    } else {
+      const baseCode = application.companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 32) || 'provider'
+      let code = baseCode
+      let suffix = 2
+      while (await prisma.provider.findUnique({ where: { code } })) code = `${baseCode}-${suffix++}`
+      provider = await prisma.provider.create({
+        data: {
+          name: application.companyName,
+          code,
+          active: false,
+          integrationType: application.integrationType,
+          cities: application.cities,
+          rideTypes: application.rideTypes,
+          bookingUrl: null,
+        },
+      })
+    }
     temporaryPassword = crypto.randomBytes(18).toString('base64url')
     await prisma.partnerApplication.update({
       where: { id: application.id },
