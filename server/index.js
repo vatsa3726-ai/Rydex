@@ -278,6 +278,40 @@ app.get('/api/providers/earnings', async (req, res) => {
   return res.json({ from, to, rides: completed.length, fare, platformFees, totalCollected: fare + platformFees, providerEarnings: fare, rydexRevenue: platformFees })
 })
 
+app.get('/api/admin/providers', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.json({ providers: getProviderCatalog().map((provider) => ({ ...provider, active: true, cities: [], rideTypes: [] })) })
+  const providers = await prisma.provider.findMany({ orderBy: { createdAt: 'desc' } })
+  res.json({ providers })
+})
+
+app.post('/api/admin/providers', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required to save providers.' })
+  const { name, code, integrationType = 'DEMO', bookingUrl = null, cities = [], rideTypes = [], active = true } = req.body || {}
+  if (!String(name || '').trim() || !String(code || '').trim()) return res.status(400).json({ error: 'Provider name and code are required.' })
+  try {
+    const provider = await prisma.provider.upsert({
+      where: { code: String(code).trim().toLowerCase() },
+      update: { name: String(name).trim(), integrationType, bookingUrl, cities, rideTypes, active },
+      create: { name: String(name).trim(), code: String(code).trim().toLowerCase(), integrationType, bookingUrl, cities, rideTypes, active },
+    })
+    res.status(201).json({ provider })
+  } catch { res.status(400).json({ error: 'Unable to save provider. Check the provider code and fields.' }) }
+})
+
+app.patch('/api/admin/providers/:code', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required to update providers.' })
+  try {
+    const provider = await prisma.provider.update({ where: { code: req.params.code }, data: { active: Boolean(req.body?.active) } })
+    res.json({ provider })
+  } catch { res.status(404).json({ error: 'Provider not found.' }) }
+})
+
 app.get('/api/admin/overview', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   const suppliedToken = String(req.headers['x-admin-token'] || '')
