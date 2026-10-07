@@ -223,6 +223,7 @@ app.get('/api/providers/catalog', async (_req, res) => {
 })
 
 app.post('/api/payments/order', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex payment is disabled in redirect mode. Complete payment with the selected provider.' })
   const { bookingId } = req.body
   const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
@@ -265,6 +266,7 @@ app.post('/api/payments/order', async (req, res) => {
 })
 
 app.post('/api/payments/verify', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Rydex payment is disabled in redirect mode.' })
   const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
   const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
@@ -1022,6 +1024,7 @@ app.get('/api/auth/me', async (req, res) => {
 })
 
 app.post('/api/bookings', async (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(410).json({ error: 'Direct Rydex booking is disabled. Choose a provider and complete the ride with the provider.' })
   const { pickup, destination, rideId, rideName, fare, phone, providerCode, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
   const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
