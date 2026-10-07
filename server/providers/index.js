@@ -114,6 +114,7 @@ function createApiAdapter(provider) {
         body: JSON.stringify({
           pickup: input.pickup,
           destination: input.destination,
+          distanceKm: input.route?.distanceKm || 0,
           coordinates: input.coordinates || null,
           rideTypes: input.rideTypes || rideTypes.map((ride) => ride.id),
         }),
