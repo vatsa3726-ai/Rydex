@@ -204,6 +204,24 @@ app.post('/api/providers/drivers/:driverId/availability', async (req, res) => {
   res.json(driver)
 })
 
+app.get('/api/providers/bookings', async (req, res) => {
+  const status = String(req.query.status || 'CONFIRMED')
+  if (prisma) {
+    try {
+      const list = await prisma.booking.findMany({
+        where: { status, driverId: null },
+        orderBy: { createdAt: 'asc' },
+      })
+      return res.json({ bookings: list })
+    } catch (error) {
+      console.error('Provider booking queue failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load provider bookings.' })
+    }
+  }
+  const list = [...bookings.values()].filter((booking) => booking.status === status && !booking.driverId)
+  res.json({ bookings: list })
+})
+
 app.post('/api/providers/drivers/:driverId/accept', async (req, res) => {
   const bookingId = String(req.body.bookingId || '')
   if (!bookingId) return res.status(400).json({ error: 'Booking ID is required.' })
