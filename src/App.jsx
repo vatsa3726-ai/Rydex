@@ -41,6 +41,9 @@ function App() {
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
   const [driverRide, setDriverRide] = useState(null)
+  const [trackingOpen, setTrackingOpen] = useState(false)
+  const [trackingBooking, setTrackingBooking] = useState(null)
+  const [tracking, setTracking] = useState(null)
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
   })
@@ -143,6 +146,23 @@ function App() {
     await loadDriverRide()
   }
 
+  const loadTracking = async (bookingId) => {
+    try {
+      const response = await fetch(`${API_URL}/bookings/${bookingId}/tracking`)
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to load tracking.')
+      setTracking(data)
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to load live tracking.')
+    }
+  }
+
+  const openTracking = async (item) => {
+    setTrackingBooking(item)
+    setTrackingOpen(true)
+    await loadTracking(item.id)
+  }
+
   const loadBookings = async () => {
     const token = localStorage.getItem('rydexToken')
     if (!token) {
@@ -164,6 +184,12 @@ function App() {
       setBookingsLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!trackingOpen || !trackingBooking?.id) return undefined
+    const timer = window.setInterval(() => loadTracking(trackingBooking.id), 5000)
+    return () => window.clearInterval(timer)
+  }, [trackingOpen, trackingBooking?.id])
 
   const requestOtp = async (event) => {
     event?.preventDefault()
@@ -645,8 +671,33 @@ function App() {
                 <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
                 <div className="history-bottom"><span>{new Date(item.createdAt).toLocaleString()}</span><strong>₹{item.total}</strong></div>
                 <small>Booking ID: {item.id}</small>
+                {['DRIVER_ASSIGNED', 'IN_PROGRESS'].includes(item.status) && <button className="track-btn" onClick={() => openTracking(item)}>📍 Track ride</button>}
               </article>
             ))}</div> : <div className="empty-history"><div className="empty-icon">↗</div><h3>No bookings yet</h3><p>Your Rydex rides will appear here after your first booking.</p></div>}
+          </section>
+        </div>
+      )}
+
+      {trackingOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setTrackingOpen(false)}>
+          <section className="tracking-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="bookings-header"><div><span className="eyebrow">LIVE RIDE</span><h2>Track your driver</h2></div><button className="auth-close" onClick={() => setTrackingOpen(false)}>×</button></div>
+            <div className="tracking-map">
+              <div className="map-road road-a"></div><div className="map-road road-b"></div>
+              <div className="map-pin pickup-pin">●</div><div className="map-pin driver-pin">🚕</div><div className="map-pin destination-pin">◆</div>
+              <div className="map-route"></div>
+              <span className="map-label pickup-label">Pickup</span><span className="map-label destination-label">Destination</span>
+            </div>
+            <div className="tracking-summary">
+              <div><span>Status</span><strong>{String(tracking?.status || trackingBooking?.status || 'LOADING').replaceAll('_',' ')}</strong></div>
+              <div><span>Driver</span><strong>{tracking?.driver?.name || 'Finding driver…'}</strong></div>
+              <div><span>Vehicle</span><strong>{tracking?.driver ? `${tracking.driver.vehicleType} · ${tracking.driver.vehicleNumber || 'Assigned'}` : 'Waiting for assignment'}</strong></div>
+            </div>
+            <div className="tracking-location">
+              <span className="live-dot"></span>
+              {tracking?.driver?.latitude ? `Live GPS · ${Number(tracking.driver.latitude).toFixed(5)}, ${Number(tracking.driver.longitude).toFixed(5)}` : 'Waiting for the driver to share a live location.'}
+            </div>
+            <p className="tracking-note">This is the live-tracking foundation. The map will use Google Maps when Maps/Places is connected.</p>
           </section>
         </div>
       )}
