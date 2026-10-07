@@ -20,6 +20,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [apiNotice, setApiNotice] = useState('')
   const [booking, setBooking] = useState(null)
+  const [paymentLoading, setPaymentLoading] = useState(false)
 
   const sortedRides = useMemo(() => {
     const list = [...rides]
@@ -53,6 +54,66 @@ function App() {
       setLoading(false)
       setSearched(true)
       setSelected(null)
+    }
+  }
+
+  const loadRazorpay = () => new Promise((resolve, reject) => {
+    if (window.Razorpay) return resolve()
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.onload = resolve
+    script.onerror = () => reject(new Error('Unable to load Razorpay Checkout'))
+    document.body.appendChild(script)
+  })
+
+  const startPayment = async () => {
+    if (!booking) return
+    setPaymentLoading(true)
+    setApiNotice('')
+
+    try {
+      const response = await fetch(`${API_URL}/payments/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bookingId: booking.id }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to create payment order.')
+
+      await loadRazorpay()
+
+      const checkout = new window.Razorpay({
+        key: data.keyId,
+        amount: data.amount,
+        currency: data.currency,
+        name: 'Rydex',
+        description: `${booking.rideName} ride`,
+        order_id: data.orderId,
+        prefill: { name: 'Rydex Customer' },
+        theme: { color: '#19b978' },
+        handler: async (payment) => {
+          const verify = await fetch(`${API_URL}/payments/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bookingId: booking.id,
+              razorpayOrderId: payment.razorpay_order_id,
+              razorpayPaymentId: payment.razorpay_payment_id,
+              razorpaySignature: payment.razorpay_signature,
+            }),
+          })
+          const result = await verify.json()
+          if (!verify.ok) throw new Error(result.error || 'Payment verification failed.')
+          setBooking(result.booking)
+          setApiNotice('Payment verified successfully.')
+        },
+        modal: { ondismiss: () => setPaymentLoading(false) },
+      })
+
+      checkout.open()
+    } catch (error) {
+      setApiNotice(error.message || 'Payment could not be started.')
+      setPaymentLoading(false)
     }
   }
 
@@ -198,7 +259,12 @@ function App() {
                       <span>Total</span>
                       <strong>₹{booking.total}</strong>
                     </div>
-                    <p className="demo-note">Status: {booking.status}. Payment gateway and real partner dispatch come next.</p>
+                    {booking.status === 'PAYMENT_PENDING' && (
+                      <button className="pay-btn" onClick={startPayment} disabled={paymentLoading}>
+                        {paymentLoading ? 'Opening payment…' : 'Pay securely'} <span>→</span>
+                      </button>
+                    )}
+                    <p className="demo-note">Status: {booking.status}. Partner dispatch will follow payment confirmation.</p>
                   </div>
                 ) : selected ? (
                   <>
@@ -226,7 +292,7 @@ function App() {
                     <button className="pay-btn" onClick={createBooking} disabled={loading}>
                       {loading ? 'Creating booking…' : 'Continue to payment'} <span>→</span>
                     </button>
-                    <p className="demo-note">Payment is still in demo mode. No money is charged.</p>
+                    <p className="demo-note">First step creates the booking. The next screen opens Razorpay only when test credentials are configured.</p>
                   </>
                 ) : (
                   <div className="empty-checkout">
