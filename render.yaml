@@ -33,7 +33,7 @@ services:
       - key: PROVIDER_API_TOKEN
         generateValue: true
       - key: PROVIDER_CREDENTIAL_KEY
-        generateValue: true
+        sync: false
       - key: OTP_DEMO_MODE
         value: "false"
       - key: FRONTEND_ORIGIN
