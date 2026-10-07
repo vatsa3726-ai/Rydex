@@ -463,12 +463,15 @@ app.post('/api/bookings', async (req, res) => {
 
 
 app.post('/api/bookings/:id/cancel', async (req, res) => {
+  const session = getSession(req)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const bookingId = req.params.id
 
   if (prisma) {
     try {
       const booking = await prisma.booking.findUnique({ where: { id: bookingId } })
       if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+      if (booking.userId !== session.userId) return res.status(403).json({ error: 'You cannot cancel this booking.' })
 
       if (!['PAYMENT_PENDING', 'CONFIRMED'].includes(booking.status)) {
         return res.status(409).json({ error: 'This booking can no longer be cancelled.' })
@@ -534,6 +537,8 @@ app.post('/api/providers/drivers/:driverId/location', async (req, res) => {
 })
 
 app.get('/api/bookings/:id/tracking', async (req, res) => {
+  const session = getSession(req)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
       const booking = await prisma.booking.findUnique({
@@ -541,6 +546,7 @@ app.get('/api/bookings/:id/tracking', async (req, res) => {
         include: { driver: true },
       })
       if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+      if (booking.userId !== session.userId) return res.status(403).json({ error: 'You cannot view this ride.' })
       return res.json({
         bookingId: booking.id,
         status: booking.status,
