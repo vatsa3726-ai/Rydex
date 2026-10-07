@@ -43,6 +43,9 @@ model Driver {
   vehicleType   String
   vehicleNumber String?
   available     Boolean  @default(true)
+  latitude      Float?
+  longitude     Float?
+  locationAt    DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
