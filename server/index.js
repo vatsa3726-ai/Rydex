@@ -2,6 +2,8 @@ import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
 import crypto from 'node:crypto'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { getRideQuotes } from './providers/index.js'
 import { getRouteEstimate } from './routing.js'
 import { getPrisma, closePrisma } from './db.js'
@@ -804,6 +806,16 @@ app.get('/api/bookings/:id', async (req, res) => {
   if (booking.phone !== session.phone) return res.status(403).json({ error: 'You cannot view this booking.' })
   res.json(booking)
 })
+
+if (process.env.NODE_ENV === 'production') {
+  const rootDir = path.dirname(fileURLToPath(import.meta.url))
+  const distDir = path.join(rootDir, '..', 'dist')
+  app.use(express.static(distDir))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/')) return next()
+    res.sendFile(path.join(distDir, 'index.html'))
+  })
+}
 
 const server = app.listen(PORT, () => {
   console.log(`Rydex API running on http://localhost:${PORT}`)
