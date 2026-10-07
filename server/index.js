@@ -367,6 +367,55 @@ app.patch('/api/admin/partner-applications/:id', async (req, res) => {
   res.json({ application, provider })
 })
 
+app.post('/api/admin/providers/:code/test-quote', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+
+  const provider = await prisma.provider.findUnique({
+    where: { code: req.params.code },
+    include: { connection: true },
+  })
+  if (!provider) return res.status(404).json({ error: 'Provider not found.' })
+  if (String(provider.integrationType).toUpperCase() !== 'API') {
+    return res.status(400).json({ error: 'Quote testing is available for API providers only.' })
+  }
+  if (!provider.connection?.apiBaseUrl) return res.status(400).json({ error: 'Provider API is not configured.' })
+
+  const startedAt = Date.now()
+  try {
+    const endpoint = new URL(provider.connection.apiBaseUrl)
+    endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + '/quotes'
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(provider.connection.apiKey ? { 'X-API-Key': provider.connection.apiKey } : {}),
+        ...(provider.connection.apiSecret ? { 'X-API-Secret': provider.connection.apiSecret } : {}),
+      },
+      body: JSON.stringify({
+        pickup: req.body?.pickup || 'Test Pickup',
+        destination: req.body?.destination || 'Test Destination',
+        distanceKm: Number(req.body?.distanceKm) || 8,
+        rideTypes: Array.isArray(req.body?.rideTypes) ? req.body.rideTypes : ['auto', 'bike', 'cab', 'premium'],
+      }),
+      signal: AbortSignal.timeout(10000),
+    })
+    const textBody = await response.text()
+    let payload
+    try { payload = JSON.parse(textBody) } catch { payload = { raw: textBody.slice(0, 10000) } }
+    res.status(response.ok ? 200 : 502).json({
+      ok: response.ok,
+      httpStatus: response.status,
+      latencyMs: Date.now() - startedAt,
+      providerResponse: payload,
+    })
+  } catch (error) {
+    res.status(502).json({ ok: false, latencyMs: Date.now() - startedAt, error: 'Provider quote test failed.' })
+  }
+})
+
 app.get('/api/admin/providers/:code/connection', async (req, res) => {
   const expectedToken = process.env.ADMIN_TOKEN
   if (!expectedToken || req.headers['x-admin-token'] !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
