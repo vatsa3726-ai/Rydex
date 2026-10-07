@@ -44,6 +44,7 @@ model PartnerApplication {
   notes           String?
   status          PartnerApplicationStatus @default(PENDING)
   providerCode    String?
+  onboardingStep  String                  @default("APPLICATION")
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
 
