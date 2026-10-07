@@ -39,8 +39,14 @@ function allowRateLimit(key, max = OTP_MAX_REQUESTS) {
   return true
 }
 
-function getSession(req) {
+async function getSession(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (!token) return null
+  if (prisma) {
+    const stored = await prisma.userSession.findUnique({ where: { tokenHash: hashToken(token) } })
+    if (!stored || stored.revokedAt || stored.expiresAt < new Date()) return null
+    return { userId: stored.userId, token, sessionId: stored.id }
+  }
   return sessions.get(token) || null
 }
 
@@ -215,7 +221,7 @@ app.get('/api/providers/catalog', async (_req, res) => {
 
 app.post('/api/payments/order', async (req, res) => {
   const { bookingId } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
 
   const booking = await findBooking(bookingId)
@@ -257,7 +263,7 @@ app.post('/api/payments/order', async (req, res) => {
 
 app.post('/api/payments/verify', async (req, res) => {
   const { bookingId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
 
   const booking = await findBooking(bookingId)
@@ -935,7 +941,17 @@ app.post('/api/auth/verify-otp', async (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString('hex')
-  sessions.set(token, { userId: user.id, phone: normalizedPhone, createdAt: Date.now() })
+  if (prisma) {
+    await prisma.userSession.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      },
+    })
+  } else {
+    sessions.set(token, { userId: user.id, phone: normalizedPhone, createdAt: Date.now() })
+  }
   res.json({ ok: true, token, user: { id: user.id, phone: normalizedPhone, name: user.name || null } })
 })
 
@@ -963,6 +979,13 @@ app.get('/api/bookings', async (req, res) => {
   res.json({ bookings: bookingsForUser })
 })
 
+app.post('/api/auth/logout', async (req, res) => {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  if (prisma && token) await prisma.userSession.updateMany({ where: { tokenHash: hashToken(token), revokedAt: null }, data: { revokedAt: new Date() } })
+  if (token) sessions.delete(token)
+  res.json({ ok: true })
+})
+
 app.get('/api/auth/me', async (req, res) => {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
   const session = sessions.get(token)
@@ -982,7 +1005,7 @@ app.get('/api/auth/me', async (req, res) => {
 
 app.post('/api/bookings', async (req, res) => {
   const { pickup, destination, rideId, rideName, fare, phone, providerCode, pickupLat, pickupLng, destinationLat, destinationLng } = req.body
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const numericFare = Number(fare)
   const normalizedProviderCode = String(providerCode || 'rydex-partner').trim()
@@ -1065,7 +1088,7 @@ app.post('/api/bookings', async (req, res) => {
 
 
 app.post('/api/bookings/:id/cancel', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   const bookingId = req.params.id
 
@@ -1139,7 +1162,7 @@ app.post('/api/providers/drivers/:driverId/location', async (req, res) => {
 })
 
 app.get('/api/bookings/:id/tracking', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
@@ -1249,7 +1272,7 @@ app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
 })
 
 app.get('/api/bookings/:id', async (req, res) => {
-  const session = getSession(req)
+  const session = await getSession(req)
   if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
