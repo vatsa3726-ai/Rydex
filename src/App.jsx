@@ -46,6 +46,7 @@ function App() {
   const [providerCode, setProviderCode] = useState('rydex-demo')
   const [providerToken, setProviderToken] = useState(() => sessionStorage.getItem('rydexProviderToken') || '')
   const [providerEarnings, setProviderEarnings] = useState(null)
+  const [partnerForm, setPartnerForm] = useState({ companyName: '', contactName: '', email: '', phone: '', website: '', cities: '', rideTypes: 'auto,bike,cab', integrationType: 'BOOKING_LINK', notes: '' })
   const [adminOpen, setAdminOpen] = useState(false)
   const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
   const [adminData, setAdminData] = useState(null)
@@ -168,6 +169,21 @@ function App() {
     const data = await response.json()
     if (!response.ok) throw new Error(data.error || 'Unable to update provider.')
     await loadAdminProviders()
+  }
+
+  const submitPartnerApplication = async () => {
+    const response = await fetch(`${API_URL}/api/partners/apply`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...partnerForm,
+        cities: partnerForm.cities.split(',').map((item) => item.trim()).filter(Boolean),
+        rideTypes: partnerForm.rideTypes.split(',').map((item) => item.trim()).filter(Boolean),
+      }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Unable to submit application.')
+    setApiNotice('Partner application submitted. Our team can review it from Admin.')
+    setPartnerForm({ companyName: '', contactName: '', email: '', phone: '', website: '', cities: '', rideTypes: 'auto,bike,cab', integrationType: 'BOOKING_LINK', notes: '' })
   }
 
   const openAdminDashboard = async () => {
@@ -995,7 +1011,19 @@ function App() {
               </div>
               <p className="provider-footer-note">No provider API or private app endpoint is accessed without authorization. Once a partnership is approved, we can connect the provider's official API or booking URL here.</p>
             </div>
-            <button className="pay-btn" onClick={() => setApiNotice('Partner onboarding is ready. Connect an authorized provider API or official booking link to activate a provider.')}>Start partner onboarding →</button>
+            <div className="partner-apply-form">
+  <h3>Partner application</h3>
+  <input placeholder="Company name *" value={partnerForm.companyName} onChange={e => setPartnerForm({...partnerForm, companyName:e.target.value})}/>
+  <input placeholder="Contact person *" value={partnerForm.contactName} onChange={e => setPartnerForm({...partnerForm, contactName:e.target.value})}/>
+  <input placeholder="Business email *" type="email" value={partnerForm.email} onChange={e => setPartnerForm({...partnerForm, email:e.target.value})}/>
+  <input placeholder="Phone number" value={partnerForm.phone} onChange={e => setPartnerForm({...partnerForm, phone:e.target.value})}/>
+  <input placeholder="Website" value={partnerForm.website} onChange={e => setPartnerForm({...partnerForm, website:e.target.value})}/>
+  <input placeholder="Cities served" value={partnerForm.cities} onChange={e => setPartnerForm({...partnerForm, cities:e.target.value})}/>
+  <input placeholder="Ride types: auto,bike,cab" value={partnerForm.rideTypes} onChange={e => setPartnerForm({...partnerForm, rideTypes:e.target.value})}/>
+  <select value={partnerForm.integrationType} onChange={e => setPartnerForm({...partnerForm, integrationType:e.target.value})}><option value="BOOKING_LINK">Official booking link</option><option value="API">Authorized API</option></select>
+  <textarea placeholder="Anything we should know?" value={partnerForm.notes} onChange={e => setPartnerForm({...partnerForm, notes:e.target.value})}/>
+  <button className="pay-btn" onClick={submitPartnerApplication}>Submit partnership application →</button>
+</div>
           </section>
         </div>
       )}

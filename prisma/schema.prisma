@@ -25,6 +25,32 @@ model User {
   bookings  Booking[]
 }
 
+enum PartnerApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model PartnerApplication {
+  id              String                  @id @default(cuid())
+  companyName     String
+  contactName     String
+  email           String
+  phone           String?
+  website         String?
+  cities          String[]                @default([])
+  rideTypes       String[]                @default([])
+  integrationType String                  @default("BOOKING_LINK")
+  notes           String?
+  status          PartnerApplicationStatus @default(PENDING)
+  providerCode    String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
 model Provider {
   id          String   @id @default(cuid())
   name            String
