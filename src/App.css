@@ -148,3 +148,17 @@ footer { border-top: 1px solid var(--line); padding: 24px 6vw; display: flex; ju
 .confirmation-price { border-block: 1px solid var(--line); padding: 14px 0; display: flex; justify-content: space-between; align-items: center; }
 .confirmation-price span { color: var(--muted); font-size: 13px; }
 .confirmation-price strong { font-size: 22px; }
+
+.location-field { position: relative; }
+.location-btn {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  color: #168b5a;
+}
+.location-btn:disabled { opacity: .6; cursor: wait; }
