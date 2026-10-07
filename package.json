@@ -11,7 +11,9 @@
     "server": "node server/index.js",
     "sandbox:provider": "node sandbox-provider/index.js",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "test": "node --test server/security.test.js",
+    "db:validate": "prisma validate"
   },
   "dependencies": {
     "react": "^19.2.8",
