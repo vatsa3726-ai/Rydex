@@ -15,6 +15,22 @@ const sessions = new Map()
 const drivers = new Map()
 const prisma = getPrisma()
 const OTP_TTL_MS = 5 * 60 * 1000
+const requestCounters = new Map()
+const RATE_WINDOW_MS = 15 * 60 * 1000
+const OTP_MAX_REQUESTS = 5
+
+function allowRateLimit(key, max = OTP_MAX_REQUESTS) {
+  const now = Date.now()
+  const existing = requestCounters.get(key)
+  if (!existing || now - existing.startedAt > RATE_WINDOW_MS) {
+    requestCounters.set(key, { startedAt: now, count: 1 })
+    return true
+  }
+  if (existing.count >= max) return false
+  existing.count += 1
+  requestCounters.set(key, existing)
+  return true
+}
 
 function getSession(req) {
   const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
@@ -37,8 +53,46 @@ async function savePaymentOrder(bookingId, order) {
   return null
 }
 
-app.use(cors())
-app.use(express.json())
+app.use(cors({
+  origin: process.env.FRONTEND_ORIGIN ? process.env.FRONTEND_ORIGIN.split(',').map((item) => item.trim()) : true,
+}))
+app.post('/api/payments/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET
+  if (!secret) return res.status(503).json({ error: 'Webhook secret is not configured.' })
+  const signature = String(req.headers['x-razorpay-signature'] || '')
+  const expected = crypto.createHmac('sha256', secret).update(req.body).digest('hex')
+  if (!signature || signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) {
+    return res.status(400).json({ error: 'Invalid webhook signature.' })
+  }
+
+  try {
+    const payload = JSON.parse(req.body.toString('utf8'))
+    const event = String(payload.event || '')
+    const paymentEntity = payload.payload?.payment?.entity
+    const orderId = paymentEntity?.order_id
+    const paymentId = paymentEntity?.id
+
+    if (prisma && orderId) {
+      const payment = await prisma.payment.findFirst({ where: { gatewayOrderId: orderId } })
+      if (payment) {
+        const paid = event === 'payment.captured' || event === 'order.paid'
+        const failed = event === 'payment.failed'
+        if (paid) {
+          await prisma.$transaction([
+            prisma.payment.update({ where: { id: payment.id }, data: { gatewayPaymentId: paymentId || payment.gatewayPaymentId, status: 'paid' } }),
+            prisma.booking.update({ where: { id: payment.bookingId }, data: { paymentId: paymentId || undefined, status: 'CONFIRMED' } }),
+          ])
+        } else if (failed) {
+          await prisma.payment.update({ where: { id: payment.id }, data: { gatewayPaymentId: paymentId || undefined, status: 'failed' } })
+        }
+      }
+    }
+    res.json({ ok: true })
+  } catch {
+    res.status(400).json({ error: 'Invalid webhook payload.' })
+  }
+})
+app.use(express.json({ limit: '1mb' }))
 
 app.get('/api/health', async (_req, res) => {
   let database = 'memory'
@@ -171,6 +225,85 @@ app.post('/api/payments/verify', async (req, res) => {
   res.json({ ok: true, booking })
 })
 
+app.use('/api/providers', (req, res, next) => {
+  const expected = process.env.PROVIDER_API_TOKEN
+  if (!expected) return next()
+  if (String(req.headers['x-provider-token'] || '') !== expected) return res.status(401).json({ error: 'Provider access denied.' })
+  next()
+})
+
+app.get('/api/providers/earnings', async (req, res) => {
+  const providerCode = String(req.query.providerCode || '').trim()
+  const from = req.query.from ? new Date(String(req.query.from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const to = req.query.to ? new Date(String(req.query.to)) : new Date()
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return res.status(400).json({ error: 'Invalid date range.' })
+
+  if (prisma) {
+    try {
+      const provider = providerCode ? await prisma.provider.findUnique({ where: { code: providerCode } }) : null
+      if (providerCode && !provider) return res.status(404).json({ error: 'Provider not found.' })
+      const completed = await prisma.booking.findMany({
+        where: { status: 'COMPLETED', createdAt: { gte: from, lte: to }, ...(provider ? { providerId: provider.id } : {}) },
+        select: { fare: true, platformFee: true, total: true, createdAt: true, rideType: true },
+      })
+      const fare = completed.reduce((sum, item) => sum + item.fare, 0)
+      const platformFees = completed.reduce((sum, item) => sum + item.platformFee, 0)
+      const total = completed.reduce((sum, item) => sum + item.total, 0)
+      return res.json({ from, to, rides: completed.length, fare, platformFees, totalCollected: total, providerEarnings: fare, rydexRevenue: platformFees })
+    } catch (error) {
+      console.error('Provider earnings failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load earnings.' })
+    }
+  }
+
+  const completed = [...bookings.values()].filter((item) => item.status === 'COMPLETED')
+  const fare = completed.reduce((sum, item) => sum + Number(item.fare || 0), 0)
+  const platformFees = completed.reduce((sum, item) => sum + Number(item.platformFee || PLATFORM_FEE), 0)
+  return res.json({ from, to, rides: completed.length, fare, platformFees, totalCollected: fare + platformFees, providerEarnings: fare, rydexRevenue: platformFees })
+})
+
+app.get('/api/admin/overview', async (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN
+  const suppliedToken = String(req.headers['x-admin-token'] || '')
+  if (!expectedToken || !suppliedToken || suppliedToken !== expectedToken) return res.status(401).json({ error: 'Admin access denied.' })
+
+  if (prisma) {
+    try {
+      const [users, providers, drivers, bookingsCount, pending, confirmed, completed, cancelled, recent] = await Promise.all([
+        prisma.user.count(),
+        prisma.provider.count({ where: { active: true } }),
+        prisma.driver.count(),
+        prisma.booking.count(),
+        prisma.booking.count({ where: { status: 'PAYMENT_PENDING' } }),
+        prisma.booking.count({ where: { status: { in: ['CONFIRMED', 'DRIVER_ASSIGNED', 'IN_PROGRESS'] } } }),
+        prisma.booking.count({ where: { status: 'COMPLETED' } }),
+        prisma.booking.count({ where: { status: 'CANCELLED' } }),
+        prisma.booking.findMany({ orderBy: { createdAt: 'desc' }, take: 20, include: { provider: true, driver: true } }),
+      ])
+      const revenue = await prisma.booking.aggregate({ where: { status: 'COMPLETED' }, _sum: { total: true, fare: true, platformFee: true } })
+      return res.json({ users, providers, drivers, bookings: bookingsCount, pending, active: confirmed, completed, cancelled, revenue: revenue._sum, recent })
+    } catch (error) {
+      console.error('Admin overview failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load admin overview.' })
+    }
+  }
+
+  const all = [...bookings.values()]
+  const sum = (field) => all.filter((item) => item.status === 'COMPLETED').reduce((total, item) => total + Number(item[field] || 0), 0)
+  res.json({
+    users: new Set(all.map((item) => item.phone).filter(Boolean)).size,
+    providers: new Set(all.map((item) => item.providerId).filter(Boolean)).size,
+    drivers: drivers.size,
+    bookings: all.length,
+    pending: all.filter((item) => item.status === 'PAYMENT_PENDING').length,
+    active: all.filter((item) => ['CONFIRMED', 'DRIVER_ASSIGNED', 'IN_PROGRESS'].includes(item.status)).length,
+    completed: all.filter((item) => item.status === 'COMPLETED').length,
+    cancelled: all.filter((item) => item.status === 'CANCELLED').length,
+    revenue: { total: sum('total'), fare: sum('fare'), platformFee: sum('platformFee') },
+    recent: all.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 20),
+  })
+})
+
 app.post('/api/providers/drivers', async (req, res) => {
   const { name, phone, vehicleType, vehicleNumber, providerCode = 'rydex-demo' } = req.body
   const normalizedPhone = String(phone || '').replace(/\s+/g, '')
@@ -296,6 +429,8 @@ app.post('/api/auth/request-otp', (req, res) => {
   if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone)) {
     return res.status(400).json({ error: 'Enter a valid mobile number.' })
   }
+
+  if (!allowRateLimit(`otp:${normalizedPhone}`)) return res.status(429).json({ error: 'Too many OTP requests. Try again later.' })
 
   const code = String(Math.floor(100000 + Math.random() * 900000))
   otpChallenges.set(normalizedPhone, { code, expiresAt: Date.now() + OTP_TTL_MS })
@@ -647,9 +782,12 @@ app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
 })
 
 app.get('/api/bookings/:id', async (req, res) => {
+  const session = getSession(req)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
   if (prisma) {
     try {
       const booking = await prisma.booking.findUnique({ where: { id: req.params.id } })
+      if (booking && booking.userId !== session.userId) return res.status(403).json({ error: 'You cannot view this booking.' })
       if (booking) return res.json({
         ...booking,
         createdAt: booking.createdAt.toISOString(),
@@ -663,6 +801,7 @@ app.get('/api/bookings/:id', async (req, res) => {
 
   const booking = bookings.get(req.params.id)
   if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+  if (booking.phone !== session.phone) return res.status(403).json({ error: 'You cannot view this booking.' })
   res.json(booking)
 })
 
