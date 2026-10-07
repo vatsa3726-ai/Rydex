@@ -457,6 +457,69 @@ app.post('/api/bookings/:id/cancel', async (req, res) => {
   res.json(booking)
 })
 
+const DRIVER_TRANSITIONS = {
+  DRIVER_ASSIGNED: 'IN_PROGRESS',
+  IN_PROGRESS: 'COMPLETED',
+}
+
+app.get('/api/providers/drivers/:driverId/rides', async (req, res) => {
+  if (prisma) {
+    try {
+      const rides = await prisma.booking.findMany({
+        where: { driverId: req.params.driverId, status: { in: ['DRIVER_ASSIGNED', 'IN_PROGRESS'] } },
+        orderBy: { updatedAt: 'desc' },
+      })
+      return res.json({ bookings: rides })
+    } catch (error) {
+      console.error('Driver rides lookup failed:', error.message)
+      return res.status(503).json({ error: 'Unable to load driver rides.' })
+    }
+  }
+  const rides = [...bookings.values()].filter((booking) => booking.driverId === req.params.driverId && ['DRIVER_ASSIGNED', 'IN_PROGRESS'].includes(booking.status))
+  res.json({ bookings: rides })
+})
+
+app.post('/api/providers/drivers/:driverId/status', async (req, res) => {
+  const { bookingId, status } = req.body
+  if (!bookingId || !DRIVER_TRANSITIONS[status] && !['DRIVER_ASSIGNED'].includes(status)) {
+    return res.status(400).json({ error: 'Invalid ride status.' })
+  }
+
+  if (prisma) {
+    try {
+      const booking = await prisma.booking.findUnique({ where: { id: bookingId } })
+      if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+      if (booking.driverId !== req.params.driverId) return res.status(403).json({ error: 'This ride is not assigned to this driver.' })
+      const expectedPrevious = status === 'DRIVER_ASSIGNED' ? 'CONFIRMED' : Object.keys(DRIVER_TRANSITIONS).find((key) => DRIVER_TRANSITIONS[key] === status)
+      if (booking.status !== expectedPrevious) {
+        return res.status(409).json({ error: `Ride must be ${expectedPrevious.replaceAll('_', ' ').toLowerCase()} before this action.` })
+      }
+
+      const updated = await prisma.booking.update({ where: { id: bookingId }, data: { status } })
+      if (status === 'COMPLETED') {
+        await prisma.driver.update({ where: { id: req.params.driverId }, data: { available: true } })
+      }
+      return res.json(updated)
+    } catch (error) {
+      console.error('Ride status update failed:', error.message)
+      return res.status(503).json({ error: 'Unable to update ride status.' })
+    }
+  }
+
+  const booking = bookings.get(bookingId)
+  const driver = drivers.get(req.params.driverId)
+  if (!booking) return res.status(404).json({ error: 'Booking not found.' })
+  if (!driver || booking.driverId !== driver.id) return res.status(403).json({ error: 'This ride is not assigned to this driver.' })
+  const expectedPrevious = status === 'DRIVER_ASSIGNED' ? 'CONFIRMED' : Object.keys(DRIVER_TRANSITIONS).find((key) => DRIVER_TRANSITIONS[key] === status)
+  if (booking.status !== expectedPrevious) return res.status(409).json({ error: 'Invalid ride status transition.' })
+  booking.status = status
+  booking.updatedAt = new Date().toISOString()
+  if (status === 'COMPLETED') driver.available = true
+  bookings.set(booking.id, booking)
+  drivers.set(driver.id, driver)
+  res.json(booking)
+})
+
 app.get('/api/bookings/:id', async (req, res) => {
   if (prisma) {
     try {

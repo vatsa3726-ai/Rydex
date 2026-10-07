@@ -40,6 +40,7 @@ function App() {
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
+  const [driverRide, setDriverRide] = useState(null)
   const [user, setUser] = useState(() => {
     try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
   })
@@ -56,6 +57,32 @@ function App() {
         setUser(null)
       })
   }, [])
+
+  const loadDriverRide = async () => {
+    if (!driverId) return
+    try {
+      const response = await fetch(`${API_URL}/providers/drivers/${driverId}/rides`)
+      const data = await response.json()
+      if (response.ok) setDriverRide(data.bookings?.[0] || null)
+    } catch {}
+  }
+
+  const updateDriverRideStatus = async (status) => {
+    if (!driverId || !driverRide) return
+    const response = await fetch(`${API_URL}/providers/drivers/${driverId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bookingId: driverRide.id, status }),
+    })
+    const data = await response.json()
+    if (!response.ok) {
+      setApiNotice(data.error || 'Unable to update ride.')
+      return
+    }
+    setDriverRide(status === 'COMPLETED' ? null : data)
+    if (status === 'COMPLETED') setDriverAvailable(true)
+    setApiNotice(status === 'IN_PROGRESS' ? 'Ride started.' : 'Ride completed.')
+  }
 
   const loadDriverQueue = async () => {
     try {
@@ -79,6 +106,7 @@ function App() {
       if (!response.ok) throw new Error(data.error || 'Unable to register driver.')
       setDriverId(data.id)
       setDriverAvailable(data.available)
+      await loadDriverRide()
       setApiNotice('Demo driver is ready.')
       await loadDriverQueue()
     } catch (error) {
@@ -112,6 +140,7 @@ function App() {
     setApiNotice(`Ride ${data.id} assigned to your driver.`)
     setDriverAvailable(false)
     await loadDriverQueue()
+    await loadDriverRide()
   }
 
   const loadBookings = async () => {
@@ -631,14 +660,24 @@ function App() {
             ) : (
               <>
                 <div className="driver-status"><div><strong>Rydex Demo Driver</strong><span>Cab · KA01RYDEX</span></div><button className={`availability-btn ${driverAvailable ? 'on' : ''}`} onClick={toggleDriverAvailability}>{driverAvailable ? '● Available' : '○ Offline'}</button></div>
-                <div className="queue-title"><span>CONFIRMED RIDE REQUESTS</span><button className="refresh-btn" onClick={loadDriverQueue}>Refresh</button></div>
+                {driverRide && (
+                  <article className="history-card active-ride-card">
+                    <div className="history-top"><strong>ACTIVE RIDE</strong><span className="status-pill status-driver_assigned">{String(driverRide.status).replaceAll('_',' ')}</span></div>
+                    <div className="history-route"><span>●</span><p>{driverRide.pickup}</p><span>◆</span><p>{driverRide.destination}</p></div>
+                    <div className="ride-actions">
+                      {driverRide.status === 'DRIVER_ASSIGNED' && <button className="pay-btn" onClick={() => updateDriverRideStatus('IN_PROGRESS')}>Start ride →</button>}
+                      {driverRide.status === 'IN_PROGRESS' && <button className="pay-btn" onClick={() => updateDriverRideStatus('COMPLETED')}>Complete ride ✓</button>}
+                    </div>
+                  </article>
+                )}
+                <div className="queue-title"><span>CONFIRMED RIDE REQUESTS</span><button className="refresh-btn" onClick={() => { loadDriverQueue(); loadDriverRide() }}>Refresh</button></div>
                 {driverBookings.length ? <div className="booking-list">{driverBookings.map((item) => (
                   <article className="history-card" key={item.id}>
                     <div className="history-top"><strong>{item.rideName}</strong><strong>₹{item.total}</strong></div>
                     <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
-                    <button className="pay-btn" disabled={!driverAvailable} onClick={() => acceptDriverBooking(item.id)}>{driverAvailable ? 'Accept ride →' : 'Driver offline'}</button>
+                    <button className="pay-btn" disabled={!driverAvailable || driverRide} onClick={() => acceptDriverBooking(item.id)}>{driverRide ? 'Finish current ride first' : driverAvailable ? 'Accept ride →' : 'Driver offline'}</button>
                   </article>
-                ))}</div> : <div className="empty-history"><h3>No confirmed requests</h3><p>Paid rides waiting for a driver will appear here.</p></div>}
+                ))}</div> : !driverRide && <div className="empty-history"><h3>No confirmed requests</h3><p>Paid rides waiting for a driver will appear here.</p></div>}
               </>
             )}
           </section>
