@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import './App.css'
 
-const rideOptions = [
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
+
+const demoRides = [
   { id: 'auto', icon: '🛺', name: 'Auto', provider: 'Rydex Partner', eta: 4, fare: 180, seats: '1–3' },
   { id: 'bike', icon: '🏍️', name: 'Bike', provider: 'Rydex Partner', eta: 3, fare: 125, seats: '1' },
   { id: 'cab', icon: '🚕', name: 'Cab', provider: 'Rydex Partner', eta: 6, fare: 290, seats: '1–4' },
@@ -13,20 +15,82 @@ function App() {
   const [destination, setDestination] = useState('')
   const [searched, setSearched] = useState(false)
   const [sort, setSort] = useState('recommended')
+  const [rides, setRides] = useState(demoRides)
   const [selected, setSelected] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [apiNotice, setApiNotice] = useState('')
+  const [booking, setBooking] = useState(null)
 
-  const rides = useMemo(() => {
-    const list = [...rideOptions]
+  const sortedRides = useMemo(() => {
+    const list = [...rides]
     if (sort === 'price') return list.sort((a, b) => a.fare - b.fare)
     if (sort === 'eta') return list.sort((a, b) => a.eta - b.eta)
     return list
-  }, [sort])
+  }, [rides, sort])
 
-  const searchRides = (event) => {
+  const searchRides = async (event) => {
     event.preventDefault()
-    if (pickup.trim() && destination.trim()) {
+    if (!pickup.trim() || !destination.trim()) return
+
+    setLoading(true)
+    setApiNotice('')
+    setBooking(null)
+
+    try {
+      const response = await fetch(`${API_URL}/rides/search`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickup, destination }),
+      })
+
+      if (!response.ok) throw new Error('API request failed')
+      const data = await response.json()
+      setRides(data.rides)
+    } catch {
+      setRides(demoRides)
+      setApiNotice('Demo mode: start the Rydex API on port 4000 for live backend data.')
+    } finally {
+      setLoading(false)
       setSearched(true)
       setSelected(null)
+    }
+  }
+
+  const createBooking = async () => {
+    if (!selected) return
+
+    setLoading(true)
+    setApiNotice('')
+
+    try {
+      const response = await fetch(`${API_URL}/bookings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pickup,
+          destination,
+          rideId: selected.id,
+          rideName: selected.name,
+          fare: selected.fare,
+        }),
+      })
+
+      if (!response.ok) throw new Error('Booking request failed')
+      setBooking(await response.json())
+    } catch {
+      setBooking({
+        id: `RDX-DEMO-${Date.now().toString().slice(-6)}`,
+        status: 'PAYMENT_PENDING',
+        pickup,
+        destination,
+        rideName: selected.name,
+        fare: selected.fare,
+        platformFee: 8,
+        total: selected.fare + 8,
+      })
+      setApiNotice('Demo booking created. Payment gateway will be connected next.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -35,7 +99,7 @@ function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="/" onClick={(e) => { e.preventDefault(); setSearched(false); setSelected(null) }}>
+        <a className="brand" href="/" onClick={(e) => { e.preventDefault(); setSearched(false); setSelected(null); setBooking(null) }}>
           <span className="brand-mark">R</span>
           <span>RYDEX</span>
         </a>
@@ -70,7 +134,9 @@ function App() {
                 <input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Where are you going?" />
               </div>
             </div>
-            <button className="search-btn" type="submit">Search rides <span>→</span></button>
+            <button className="search-btn" type="submit" disabled={loading}>
+              {loading ? 'Searching…' : 'Search rides'} <span>→</span>
+            </button>
           </form>
 
           <div className="trust-row">
@@ -78,6 +144,7 @@ function App() {
             <span>✓ One checkout</span>
             <span>✓ Transparent ₹8 platform fee</span>
           </div>
+          {apiNotice && <div className="api-notice">{apiNotice}</div>}
         </section>
 
         {searched && (
@@ -99,7 +166,7 @@ function App() {
 
             <div className="results-grid">
               <div className="ride-list">
-                {rides.map((ride, index) => (
+                {sortedRides.map((ride, index) => (
                   <article className={`ride-card ${selected?.id === ride.id ? 'selected' : ''}`} key={ride.id}>
                     <div className="ride-icon">{ride.icon}</div>
                     <div className="ride-main">
@@ -113,7 +180,7 @@ function App() {
                       <strong>₹{ride.fare + 8}</strong>
                       <span>incl. ₹8 fee</span>
                     </div>
-                    <button className="select-btn" onClick={() => setSelected(ride)}>
+                    <button className="select-btn" onClick={() => { setSelected(ride); setBooking(null) }}>
                       {selected?.id === ride.id ? 'Selected' : 'Select'}
                     </button>
                   </article>
@@ -121,7 +188,19 @@ function App() {
               </div>
 
               <aside className="checkout-card">
-                {selected ? (
+                {booking ? (
+                  <div className="booking-success">
+                    <div className="success-icon">✓</div>
+                    <span className="eyebrow">BOOKING CREATED</span>
+                    <h3>{booking.rideName}</h3>
+                    <p className="booking-id">Booking ID: <strong>{booking.id}</strong></p>
+                    <div className="confirmation-price">
+                      <span>Total</span>
+                      <strong>₹{booking.total}</strong>
+                    </div>
+                    <p className="demo-note">Status: {booking.status}. Payment gateway and real partner dispatch come next.</p>
+                  </div>
+                ) : selected ? (
                   <>
                     <div className="checkout-title">
                       <span>YOUR RIDE</span>
@@ -144,10 +223,10 @@ function App() {
                       <hr />
                       <div className="total"><span>Total</span><strong>₹{total}</strong></div>
                     </div>
-                    <button className="pay-btn" onClick={() => alert(`Demo checkout: ₹${total}. Payment gateway will be connected next.`)}>
-                      Continue to payment <span>→</span>
+                    <button className="pay-btn" onClick={createBooking} disabled={loading}>
+                      {loading ? 'Creating booking…' : 'Continue to payment'} <span>→</span>
                     </button>
-                    <p className="demo-note">Demo booking · live partner pricing will be connected later</p>
+                    <p className="demo-note">Payment is still in demo mode. No money is charged.</p>
                   </>
                 ) : (
                   <div className="empty-checkout">
@@ -173,7 +252,7 @@ function App() {
       <footer id="support">
         <span>© 2026 Rydex</span>
         <span>Compare. Choose. Ride.</span>
-        <span>Demo MVP · Partner integrations coming next</span>
+        <span>Backend connected · Payment integration next</span>
       </footer>
     </div>
   )
