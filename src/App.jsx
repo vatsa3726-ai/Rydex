@@ -13,6 +13,9 @@ const demoRides = [
 function App() {
   const [pickup, setPickup] = useState('')
   const [destination, setDestination] = useState('')
+  const [pickupCoords, setPickupCoords] = useState(null)
+  const [destinationCoords, setDestinationCoords] = useState(null)
+  const [locationLoading, setLocationLoading] = useState(false)
   const [searched, setSearched] = useState(false)
   const [sort, setSort] = useState('recommended')
   const [rides, setRides] = useState(demoRides)
@@ -42,7 +45,12 @@ function App() {
       const response = await fetch(`${API_URL}/rides/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pickup, destination }),
+        body: JSON.stringify({
+          pickup,
+          destination,
+          ...(pickupCoords || {}),
+          ...(destinationCoords || {}),
+        }),
       })
 
       if (!response.ok) throw new Error('API request failed')
@@ -56,6 +64,31 @@ function App() {
       setSearched(true)
       setSelected(null)
     }
+  }
+
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setApiNotice('Location services are not supported on this device.')
+      return
+    }
+
+    setLocationLoading(true)
+    setApiNotice('Getting your current location…')
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setPickupCoords({ pickupLat: coords.latitude, pickupLng: coords.longitude })
+        setPickup('Current location')
+        setLocationLoading(false)
+        setApiNotice('Pickup location detected.')
+      },
+      () => {
+        setLocationLoading(false)
+        setApiNotice('Could not access your location. Please enter pickup manually.')
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    )
   }
 
   const loadRazorpay = () => new Promise((resolve, reject) => {
@@ -196,15 +229,26 @@ function App() {
               <span className="field-icon pickup-dot">●</span>
               <div>
                 <label>Pickup</label>
-                <input value={pickup} onChange={(e) => setPickup(e.target.value)} placeholder="Enter pickup location" />
+                <input
+                value={pickup}
+                onChange={(e) => { setPickup(e.target.value); setPickupCoords(null) }}
+                placeholder="Enter pickup location"
+              />
               </div>
+              <button className="location-btn" type="button" onClick={useCurrentLocation} disabled={locationLoading}>
+                {locationLoading ? 'Locating…' : 'Use current location'}
+              </button>
             </div>
             <div className="route-line" />
             <div className="location-field">
               <span className="field-icon destination-pin">◆</span>
               <div>
                 <label>Destination</label>
-                <input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Where are you going?" />
+                <input
+                value={destination}
+                onChange={(e) => { setDestination(e.target.value); setDestinationCoords(null) }}
+                placeholder="Where are you going?"
+              />
               </div>
             </div>
             <button className="search-btn" type="submit" disabled={loading}>
