@@ -1,0 +1,1 @@
+ALTER TABLE "PartnerApplication" ADD COLUMN "onboardingStep" TEXT NOT NULL DEFAULT 'APPLICATION';
