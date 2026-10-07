@@ -330,6 +330,43 @@ app.post('/api/partners/apply', async (req, res) => {
   }
 })
 
+app.get('/api/partners/dashboard/:id', async (req, res) => {
+  if (!prisma) return res.status(503).json({ error: 'Database is required.' })
+  const application = await prisma.partnerApplication.findUnique({
+    where: { id: req.params.id },
+    include: { },
+  })
+  if (!application || !application.providerCode) return res.status(404).json({ error: 'Partner dashboard is not available yet.' })
+  const provider = await prisma.provider.findUnique({
+    where: { code: application.providerCode },
+    include: { connection: true },
+  })
+  if (!provider) return res.status(404).json({ error: 'Partner provider not found.' })
+
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const events = await prisma.analyticsEvent.findMany({
+    where: { providerCode: provider.code, createdAt: { gte: since } },
+    select: { eventType: true, createdAt: true },
+  })
+  const count = (type) => events.filter((event) => event.eventType === type).length
+  const handoffs = count('HANDOFF')
+  const selections = count('PROVIDER_SELECTED')
+
+  res.json({
+    companyName: application.companyName,
+    contactName: application.contactName,
+    website: application.website,
+    cities: provider.cities,
+    rideTypes: provider.rideTypes,
+    integrationType: provider.integrationType,
+    liveApproved: provider.liveApproved,
+    integrationStatus: provider.connection?.status || 'NOT_CONFIGURED',
+    lastTestedAt: provider.connection?.lastTestedAt || null,
+    providerCode: provider.code,
+    analytics: { searches: count('SEARCH'), selections, handoffs, conversion: selections ? Math.round((handoffs / selections) * 100) : 0 },
+  })
+})
+
 app.get('/api/partners/status/:id', async (req, res) => {
   if (!prisma) return res.status(503).json({ error: 'Database is required.' })
   const application = await prisma.partnerApplication.findUnique({
