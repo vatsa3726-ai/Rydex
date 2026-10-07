@@ -311,3 +311,26 @@ footer{background:rgba(6,5,10,.95);border-color:rgba(255,255,255,.08);color:#807
 .admin-approval-actions{display:flex;gap:8px;align-items:center;margin-top:10px}.admin-approval-actions .pay-btn{flex:1}.admin-approval-actions .refresh-btn{min-height:42px}@media(max-width:600px){.admin-approval-actions{flex-direction:column}.admin-approval-actions .pay-btn,.admin-approval-actions .refresh-btn{width:100%}}
 
 .provider-config-actions{display:flex;gap:8px;margin-top:10px}.provider-config-actions .refresh-btn{flex:1}
+
+
+.provider-test-panel {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  display: grid;
+  gap: 8px;
+}
+.provider-test-panel span,
+.provider-test-panel small { color: rgba(255,255,255,.68); }
+.provider-test-panel pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.35);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
