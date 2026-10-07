@@ -9,7 +9,10 @@ const app = express()
 const PORT = Number(process.env.PORT || 4000)
 const PLATFORM_FEE = 8
 const bookings = new Map()
+const otpChallenges = new Map()
+const sessions = new Map()
 const prisma = getPrisma()
+const OTP_TTL_MS = 5 * 60 * 1000
 
 app.use(cors())
 app.use(express.json())
@@ -139,7 +142,78 @@ app.post('/api/payments/verify', (req, res) => {
   res.json({ ok: true, booking })
 })
 
-app.post('/api/bookings', (req, res) => {
+app.post('/api/auth/request-otp', (req, res) => {
+  const normalizedPhone = String(req.body.phone || '').replace(/\s+/g, '')
+  if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone)) {
+    return res.status(400).json({ error: 'Enter a valid mobile number.' })
+  }
+
+  const code = String(Math.floor(100000 + Math.random() * 900000))
+  otpChallenges.set(normalizedPhone, { code, expiresAt: Date.now() + OTP_TTL_MS })
+
+  const response = {
+    ok: true,
+    message: 'OTP generated. Connect an SMS/WhatsApp provider for real delivery.',
+    expiresInSeconds: OTP_TTL_MS / 1000,
+  }
+  if (process.env.OTP_DEMO_MODE === 'true') response.demoCode = code
+  res.json(response)
+})
+
+app.post('/api/auth/verify-otp', async (req, res) => {
+  const normalizedPhone = String(req.body.phone || '').replace(/\s+/g, '')
+  const code = String(req.body.code || '').trim()
+  const challenge = otpChallenges.get(normalizedPhone)
+
+  if (!/^\+?[1-9]\d{9,14}$/.test(normalizedPhone) || !challenge) {
+    return res.status(400).json({ error: 'Request a new OTP.' })
+  }
+  if (Date.now() > challenge.expiresAt) {
+    otpChallenges.delete(normalizedPhone)
+    return res.status(400).json({ error: 'OTP expired. Request a new one.' })
+  }
+  if (challenge.code !== code) return res.status(400).json({ error: 'Incorrect OTP.' })
+
+  otpChallenges.delete(normalizedPhone)
+  let user = null
+  if (prisma) {
+    try {
+      user = await prisma.user.upsert({
+        where: { phone: normalizedPhone },
+        update: {},
+        create: { phone: normalizedPhone },
+      })
+    } catch (error) {
+      console.error('Database auth failed:', error.message)
+      return res.status(503).json({ error: 'Unable to create your account right now.' })
+    }
+  } else {
+    user = { id: `local-${normalizedPhone}`, phone: normalizedPhone, name: null }
+  }
+
+  const token = crypto.randomBytes(32).toString('hex')
+  sessions.set(token, { userId: user.id, phone: normalizedPhone, createdAt: Date.now() })
+  res.json({ ok: true, token, user: { id: user.id, phone: normalizedPhone, name: user.name || null } })
+})
+
+app.get('/api/auth/me', async (req, res) => {
+  const token = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  const session = sessions.get(token)
+  if (!session) return res.status(401).json({ error: 'Not signed in.' })
+
+  if (prisma) {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: session.userId } })
+      if (!user) return res.status(401).json({ error: 'Account not found.' })
+      return res.json({ user: { id: user.id, phone: user.phone, name: user.name || null } })
+    } catch {
+      return res.status(503).json({ error: 'Unable to load account.' })
+    }
+  }
+  res.json({ user: { id: session.userId, phone: session.phone, name: null } })
+})
+
+app.post('/api/bookings', async (req, res) => {
   const { pickup, destination, rideId, rideName, fare, phone } = req.body
   const numericFare = Number(fare)
   const normalizedPhone = String(phone || '').replace(/\s+/g, '')

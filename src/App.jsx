@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
@@ -26,6 +26,87 @@ function App() {
   const [booking, setBooking] = useState(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
   const [phone, setPhone] = useState('')
+  const [authOpen, setAuthOpen] = useState(false)
+  const [authStep, setAuthStep] = useState('phone')
+  const [authPhone, setAuthPhone] = useState('')
+  const [otp, setOtp] = useState('')
+  const [otpHint, setOtpHint] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authNotice, setAuthNotice] = useState('')
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('rydexUser') || 'null') } catch { return null }
+  })
+
+  useEffect(() => {
+    const token = localStorage.getItem('rydexToken')
+    if (!token) return
+    fetch(`${API_URL}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data) => setUser(data.user))
+      .catch(() => {
+        localStorage.removeItem('rydexToken')
+        localStorage.removeItem('rydexUser')
+        setUser(null)
+      })
+  }, [])
+
+  const requestOtp = async (event) => {
+    event?.preventDefault()
+    const normalized = authPhone.replace(/\s+/g, '')
+    if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
+      setAuthNotice('Enter a valid mobile number.')
+      return
+    }
+    setAuthLoading(true)
+    setAuthNotice('')
+    try {
+      const response = await fetch(`${API_URL}/auth/request-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalized }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to send OTP.')
+      setAuthStep('otp')
+      setOtpHint(data.demoCode ? `Demo OTP: ${data.demoCode}` : 'OTP sent to your mobile number.')
+    } catch {
+      setAuthNotice('Backend is not running. Start the Rydex API and try again.')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const verifyOtp = async (event) => {
+    event?.preventDefault()
+    setAuthLoading(true)
+    setAuthNotice('')
+    try {
+      const response = await fetch(`${API_URL}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: authPhone.replace(/\s+/g, ''), code: otp }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to verify OTP.')
+      localStorage.setItem('rydexToken', data.token)
+      localStorage.setItem('rydexUser', JSON.stringify(data.user))
+      setUser(data.user)
+      setAuthOpen(false)
+      setAuthStep('phone')
+      setOtp('')
+      setOtpHint('')
+    } catch (error) {
+      setAuthNotice(error.message || 'Incorrect OTP.')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const signOut = () => {
+    localStorage.removeItem('rydexToken')
+    localStorage.removeItem('rydexUser')
+    setUser(null)
+  }
 
   const sortedRides = useMemo(() => {
     const list = [...rides]
@@ -160,6 +241,12 @@ function App() {
 
   const createBooking = async () => {
     if (!selected) return
+    if (!user) {
+      setAuthPhone(phone)
+      setAuthNotice('Sign in with your mobile number before booking.')
+      setAuthOpen(true)
+      return
+    }
     if (!/^\+?[1-9]\d{9,14}$/.test(phone.replace(/\s+/g, ''))) {
       setApiNotice('Please enter a valid mobile number before booking.')
       return
@@ -213,7 +300,7 @@ function App() {
         <nav>
           <a href="#how">How it works</a>
           <a href="#support">Support</a>
-          <button className="login-btn">Sign in</button>
+          <button className="login-btn" onClick={() => user ? signOut() : setAuthOpen(true)}>{user ? 'Sign out' : 'Sign in'}</button>
         </nav>
       </header>
 
@@ -403,6 +490,34 @@ function App() {
           </section>
         )}
       </main>
+
+      {authOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => !authLoading && setAuthOpen(false)}>
+          <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" onClick={(event) => event.stopPropagation()}>
+            <button className="auth-close" onClick={() => setAuthOpen(false)} aria-label="Close">×</button>
+            <span className="eyebrow">RYDEX ACCOUNT</span>
+            <h2 id="auth-title">{authStep === 'phone' ? 'Sign in with your phone' : 'Enter your OTP'}</h2>
+            <p>{authStep === 'phone' ? 'Use your mobile number to access bookings and ride updates.' : `We sent a verification code to ${authPhone}.`}</p>
+            {authStep === 'phone' ? (
+              <form onSubmit={requestOtp}>
+                <label className="auth-label">Mobile number</label>
+                <input className="auth-input" value={authPhone} onChange={(e) => setAuthPhone(e.target.value)} placeholder="+91 98765 43210" inputMode="tel" autoFocus />
+                <button className="pay-btn auth-submit" disabled={authLoading}>{authLoading ? 'Sending…' : 'Send OTP →'}</button>
+              </form>
+            ) : (
+              <form onSubmit={verifyOtp}>
+                <label className="auth-label">6-digit OTP</label>
+                <input className="auth-input" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" inputMode="numeric" autoFocus />
+                {otpHint && <div className="otp-hint">{otpHint}</div>}
+                <button className="pay-btn auth-submit" disabled={authLoading}>{authLoading ? 'Verifying…' : 'Verify & sign in →'}</button>
+                <button type="button" className="back-link" onClick={() => { setAuthStep('phone'); setAuthNotice(''); setOtp('') }}>← Change number</button>
+              </form>
+            )}
+            {authNotice && <div className="auth-notice">{authNotice}</div>}
+            <small className="auth-footnote">Demo mode can show the OTP locally. Real SMS/WhatsApp delivery will be connected later.</small>
+          </section>
+        </div>
+      )}
 
       <footer id="support">
         <span>© 2026 Rydex</span>
