@@ -42,6 +42,12 @@ function App() {
   const [providerDrivers, setProviderDrivers] = useState([])
   const [providerQueue, setProviderQueue] = useState([])
   const [providerLoading, setProviderLoading] = useState(false)
+  const [providerCode, setProviderCode] = useState('rydex-demo')
+  const [providerEarnings, setProviderEarnings] = useState(null)
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [adminToken, setAdminToken] = useState(() => sessionStorage.getItem('rydexAdminToken') || '')
+  const [adminData, setAdminData] = useState(null)
+  const [adminLoading, setAdminLoading] = useState(false)
   const [driverId, setDriverId] = useState('')
   const [driverBookings, setDriverBookings] = useState([])
   const [driverAvailable, setDriverAvailable] = useState(true)
@@ -83,21 +89,46 @@ function App() {
   const loadProviderPortal = async () => {
     setProviderLoading(true)
     try {
-      const [driversResponse, queueResponse] = await Promise.all([
+      const [driversResponse, queueResponse, earningsResponse] = await Promise.all([
         fetch(`${API_URL}/providers/drivers`),
         fetch(`${API_URL}/providers/bookings?status=CONFIRMED`),
+        fetch(`${API_URL}/providers/earnings?providerCode=${encodeURIComponent(providerCode)}`),
       ])
       const driversData = await driversResponse.json()
       const queueData = await queueResponse.json()
+      const earningsData = await earningsResponse.json()
       if (!driversResponse.ok) throw new Error(driversData.error || 'Unable to load drivers.')
       if (!queueResponse.ok) throw new Error(queueData.error || 'Unable to load ride requests.')
+      if (!earningsResponse.ok) throw new Error(earningsData.error || 'Unable to load earnings.')
       setProviderDrivers(driversData.drivers || [])
       setProviderQueue(queueData.bookings || [])
+      setProviderEarnings(earningsData)
     } catch (error) {
       setApiNotice(error.message || 'Unable to load provider dashboard.')
     } finally {
       setProviderLoading(false)
     }
+  }
+
+  const loadAdminDashboard = async () => {
+    if (!adminToken) return
+    setAdminLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/admin/overview`, { headers: { 'X-Admin-Token': adminToken } })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Unable to load admin dashboard.')
+      sessionStorage.setItem('rydexAdminToken', adminToken)
+      setAdminData(data)
+    } catch (error) {
+      setApiNotice(error.message || 'Unable to load admin dashboard.')
+    } finally {
+      setAdminLoading(false)
+    }
+  }
+
+  const openAdminDashboard = async () => {
+    setAdminOpen(true)
+    if (adminToken) await loadAdminDashboard()
   }
 
   const openProviderPortal = async () => {
@@ -518,6 +549,7 @@ function App() {
           <a href="#how">How it works</a>
           <button className="nav-link-btn" onClick={() => { setDriverConsoleOpen(true); loadDriverQueue() }}>Driver console</button>
           <button className="nav-link-btn" onClick={openProviderPortal}>Partner portal</button>
+          <button className="nav-link-btn" onClick={openAdminDashboard}>Admin</button>
           {user && <button className="nav-link-btn" onClick={loadBookings}>{bookingsLoading ? "Loading…" : "My bookings"}</button>}\n          <a href="#support">Support</a>
           <button className="login-btn" onClick={() => user ? signOut() : setAuthOpen(true)}>{user ? 'Sign out' : 'Sign in'}</button>
         </nav>
@@ -790,6 +822,44 @@ function App() {
         </div>
       )}
 
+      {adminOpen && (
+        <div className="auth-backdrop" role="presentation" onClick={() => setAdminOpen(false)}>
+          <section className="bookings-modal provider-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <div className="bookings-header"><div><span className="eyebrow">RYDEX OPERATIONS</span><h2>Admin Dashboard</h2></div><button className="auth-close" onClick={() => setAdminOpen(false)}>×</button></div>
+            {!adminData ? (
+              <div className="admin-access">
+                <p>Enter the server-side admin token to access operations data.</p>
+                <input className="auth-input" type="password" value={adminToken} onChange={(event) => setAdminToken(event.target.value)} placeholder="Admin token" />
+                <button className="pay-btn auth-submit" onClick={loadAdminDashboard} disabled={adminLoading}>{adminLoading ? 'Loading…' : 'Open dashboard →'}</button>
+              </div>
+            ) : (
+              <>
+                <div className="provider-kpis">
+                  <div><span>Users</span><strong>{adminData.users}</strong><small>Registered</small></div>
+                  <div><span>Bookings</span><strong>{adminData.bookings}</strong><small>{adminData.active} active</small></div>
+                  <div><span>Completed</span><strong>{adminData.completed}</strong><small>{adminData.cancelled} cancelled</small></div>
+                </div>
+                <div className="provider-kpis">
+                  <div><span>Collected</span><strong>₹{adminData.revenue?.total ?? 0}</strong><small>Completed rides</small></div>
+                  <div><span>Ride fares</span><strong>₹{adminData.revenue?.fare ?? 0}</strong><small>Provider fares</small></div>
+                  <div><span>Rydex revenue</span><strong>₹{adminData.revenue?.platformFee ?? 0}</strong><small>Platform fees</small></div>
+                </div>
+                <div className="provider-section">
+                  <div className="queue-title"><span>RECENT BOOKINGS</span><button className="refresh-btn" onClick={loadAdminDashboard}>Refresh</button></div>
+                  <div className="booking-list">{(adminData.recent || []).map((item) => (
+                    <article className="history-card" key={item.id}>
+                      <div className="history-top"><strong>{item.rideName}</strong><span className={`status-pill status-${String(item.status).toLowerCase()}`}>{String(item.status).replaceAll('_',' ')}</span></div>
+                      <div className="history-route"><span>●</span><p>{item.pickup}</p><span>◆</span><p>{item.destination}</p></div>
+                      <div className="history-bottom"><span>{new Date(item.createdAt).toLocaleString()}</span><strong>₹{item.total}</strong></div>
+                    </article>
+                  ))}</div>
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      )}
+
       {providerPortalOpen && (
         <div className="auth-backdrop" role="presentation" onClick={() => setProviderPortalOpen(false)}>
           <section className="bookings-modal provider-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
@@ -797,10 +867,19 @@ function App() {
               <div><span className="eyebrow">RYDEX PARTNER</span><h2>Provider Portal</h2></div>
               <button className="auth-close" onClick={() => setProviderPortalOpen(false)}>×</button>
             </div>
+            <div className="provider-access-row">
+              <div><label>Partner code</label><input value={providerCode} onChange={(event) => setProviderCode(event.target.value)} placeholder="rydex-demo" /></div>
+              <button className="refresh-btn provider-load-btn" onClick={loadProviderPortal}>Load partner data</button>
+            </div>
             <div className="provider-kpis">
               <div><span>Drivers</span><strong>{providerDrivers.length}</strong><small>{providerDrivers.filter((driver) => driver.available).length} available</small></div>
               <div><span>Ride requests</span><strong>{providerQueue.length}</strong><small>Paid & waiting</small></div>
               <div><span>Active drivers</span><strong>{providerDrivers.filter((driver) => !driver.available).length}</strong><small>Currently assigned</small></div>
+            </div>
+            <div className="provider-kpis">
+              <div><span>Completed rides</span><strong>{providerEarnings?.rides ?? '—'}</strong><small>Selected period</small></div>
+              <div><span>Provider earnings</span><strong>₹{providerEarnings?.providerEarnings ?? '—'}</strong><small>Ride fares</small></div>
+              <div><span>Rydex fee</span><strong>₹{providerEarnings?.rydexRevenue ?? '—'}</strong><small>Platform revenue</small></div>
             </div>
             <div className="provider-section">
               <div className="queue-title"><span>DRIVER FLEET</span><button className="refresh-btn" onClick={loadProviderPortal}>{providerLoading ? 'Loading…' : 'Refresh'}</button></div>
