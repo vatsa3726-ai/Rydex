@@ -53,7 +53,7 @@ function App() {
   const requestOtp = async (event) => {
     event?.preventDefault()
     const normalized = authPhone.replace(/\s+/g, '')
-    if (!/^\\+?[1-9]\\d{9,14}$/.test(normalized)) {
+    if (!/^\+?[1-9]\d{9,14}$/.test(normalized)) {
       setAuthNotice('Enter a valid mobile number.')
       return
     }
