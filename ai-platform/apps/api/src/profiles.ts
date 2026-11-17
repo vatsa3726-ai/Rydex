@@ -9,6 +9,7 @@ export const relationships = [
   "boyfriend",
   "girlfriend",
   "bestie",
+  "friend",
   "mentor",
   "custom",
 ] as const;

@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { type MvpContext, HttpError } from "./mvp.js";
+import {
+  readPhoto,
+  queuePhotoDeletion,
+  drainPhotoDeletions,
+} from "./photo-storage.js";
 export async function registerPrivacy(
   routes: FastifyInstance,
   ctx: MvpContext,
@@ -141,10 +146,39 @@ export async function registerPrivacy(
           "Choose a valid JPG, PNG or WebP photo under 20 megapixels.",
         );
       }
-      await db.query(
-        "INSERT INTO sn_photos(companion_id,data,consent_version) VALUES ($1,$2,$3) ON CONFLICT(companion_id) DO UPDATE SET data=$2,authorized_at=NOW(),consent_version=$3",
-        [c.id, image, "likeness-v1"],
-      );
+      if (process.env.NODE_ENV === "production" && !ctx.photoStorage)
+        throw new HttpError(
+          503,
+          "Private photo storage must be configured before uploading.",
+        );
+      const key = ctx.photoStorage
+        ? `soulnest/${ctx.user(req)}/${c.id}/${randomUUID()}.jpg`
+        : null;
+      // Register cleanup before upload so a process crash cannot leave an untracked object.
+      if (key) {
+        await db.query(
+          "INSERT INTO sn_object_deletions(object_key) VALUES ($1)",
+          [key],
+        );
+        await ctx.photoStorage!.put(key, image);
+      }
+      await db.transaction(async (tx) => {
+        await tx.query(
+          "SELECT id FROM sn_companions WHERE id=$1 AND user_id=$2 FOR UPDATE",
+          [c.id, ctx.user(req)],
+        );
+        await queuePhotoDeletion(tx, { companionId: c.id });
+        await tx.query(
+          "INSERT INTO sn_photos(companion_id,data,object_key,consent_version) VALUES ($1,$2,$3,$4) ON CONFLICT(companion_id) DO UPDATE SET data=$2,object_key=$3,authorized_at=NOW(),consent_version=$4",
+          [c.id, key ? null : image, key, "likeness-v1"],
+        );
+        if (key)
+          await tx.query(
+            "DELETE FROM sn_object_deletions WHERE object_key=$1",
+            [key],
+          );
+      });
+      await drainPhotoDeletions(db, ctx.photoStorage);
       return { saved: true };
     },
   );
@@ -153,22 +187,30 @@ export async function registerPrivacy(
     async (req, reply) => {
       const c = await ctx.owned(req, req.params.id);
       const image = (
-        await db.query("SELECT data FROM sn_photos WHERE companion_id=$1", [
-          c.id,
-        ])
+        await db.query(
+          "SELECT data,object_key FROM sn_photos WHERE companion_id=$1",
+          [c.id],
+        )
       ).rows[0];
       if (!image) throw new HttpError(404, "No photo saved.");
       return reply
         .type("image/jpeg")
         .header("Content-Disposition", 'inline; filename="companion.jpg"')
-        .send(Buffer.from(image.data));
+        .send(await readPhoto(image, ctx.photoStorage));
     },
   );
   routes.delete<{ Params: { id: string } }>(
     "/companions/:id/photo",
     async (req) => {
       const c = await ctx.owned(req, req.params.id);
-      await db.query("DELETE FROM sn_photos WHERE companion_id=$1", [c.id]);
+      await db.transaction(async (tx) => {
+        await tx.query("SELECT id FROM sn_companions WHERE id=$1 FOR UPDATE", [
+          c.id,
+        ]);
+        await queuePhotoDeletion(tx, { companionId: c.id });
+        await tx.query("DELETE FROM sn_photos WHERE companion_id=$1", [c.id]);
+      });
+      await drainPhotoDeletions(db, ctx.photoStorage);
       return { deleted: true };
     },
   );
@@ -198,13 +240,13 @@ export async function registerPrivacy(
       ).rows;
       const photo = (
         await db.query(
-          "SELECT data,authorized_at FROM sn_photos WHERE companion_id=$1",
+          "SELECT data,object_key,authorized_at FROM sn_photos WHERE companion_id=$1",
           [c.id],
         )
       ).rows[0];
       if (photo)
         c.photo = {
-          base64: Buffer.from(photo.data).toString("base64"),
+          base64: (await readPhoto(photo, ctx.photoStorage)).toString("base64"),
           authorized_at: photo.authorized_at,
         };
     }

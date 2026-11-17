@@ -17,6 +17,8 @@ export async function createDatabase(
       connectionString: url,
       max: 5,
       connectionTimeoutMillis: 10000,
+      statement_timeout: 15000,
+      query_timeout: 20000,
     });
     const db: Database = {
       query: (sql, params) => pool.query(sql, params),
@@ -60,6 +62,9 @@ export async function migrate(db: Database) {
       `CREATE TABLE IF NOT EXISTS sn_companions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES sn_users(id) ON DELETE CASCADE, name TEXT NOT NULL, relationship TEXT NOT NULL, personality TEXT NOT NULL, tone TEXT NOT NULL, language TEXT NOT NULL, instructions TEXT NOT NULL, interests TEXT NOT NULL, phrases TEXT NOT NULL, custom_label TEXT NOT NULL, memory_enabled BOOLEAN NOT NULL DEFAULT FALSE, consent_updated_at TIMESTAMPTZ, consent_version TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       `CREATE INDEX IF NOT EXISTS sn_companions_owner ON sn_companions(user_id)`,
       `CREATE TABLE IF NOT EXISTS sn_photos (companion_id TEXT PRIMARY KEY REFERENCES sn_companions(id) ON DELETE CASCADE, data BYTEA NOT NULL, authorized_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), consent_version TEXT NOT NULL)`,
+      `ALTER TABLE sn_photos ALTER COLUMN data DROP NOT NULL`,
+      `ALTER TABLE sn_photos ADD COLUMN IF NOT EXISTS object_key TEXT`,
+      `CREATE TABLE IF NOT EXISTS sn_object_deletions (object_key TEXT PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       `CREATE TABLE IF NOT EXISTS sn_messages (id BIGSERIAL PRIMARY KEY, companion_id TEXT NOT NULL REFERENCES sn_companions(id) ON DELETE CASCADE, role TEXT NOT NULL CHECK (role IN ('user','assistant')), content TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       `CREATE INDEX IF NOT EXISTS sn_messages_companion ON sn_messages(companion_id,id)`,
       `CREATE TABLE IF NOT EXISTS sn_turns (companion_id TEXT NOT NULL REFERENCES sn_companions(id) ON DELETE CASCADE, request_id TEXT NOT NULL, content TEXT NOT NULL, PRIMARY KEY(companion_id,request_id))`,

@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
 import type { Database } from "./database.js";
 import { registerMvp } from "./mvp.js";
+import type { PhotoStorage } from "./photo-storage.js";
 import {
   boundaries,
   roles,
@@ -21,6 +22,7 @@ export async function buildApp(
   provider: CompanionProvider = new PreviewProvider(),
   database?: Database,
   mvpProvider?: CompanionProvider,
+  photoStorage?: PhotoStorage,
 ) {
   const app = Fastify({ logger: false, bodyLimit: 8_000_000 });
   const sessions = new Map<string, Session>();
@@ -42,12 +44,10 @@ export async function buildApp(
     if (!req.url.startsWith("/v1/soulnest")) return;
     reply.header("Cache-Control", "no-store");
     if (database)
-      return reply
-        .code(410)
-        .send({
-          error:
-            "The anonymous preview has been retired. Use your private SoulNest account.",
-        });
+      return reply.code(410).send({
+        error:
+          "The anonymous preview has been retired. Use your private SoulNest account.",
+      });
     if (
       req.method === "OPTIONS" ||
       req.url === "/v1/soulnest/companions" ||
@@ -219,6 +219,6 @@ export async function buildApp(
   app.setNotFoundHandler((_req, reply) =>
     reply.code(404).send({ error: "Not found" }),
   );
-  if (database) await registerMvp(app, database, mvpProvider);
+  if (database) await registerMvp(app, database, mvpProvider, photoStorage);
   return app;
 }

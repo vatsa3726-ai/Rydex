@@ -6,6 +6,13 @@ import {
 } from "node:crypto";
 import { promisify } from "node:util";
 import type { Database } from "./database.js";
+import type { FastifyRequest } from "fastify";
+export function requestToken(req: FastifyRequest) {
+  // Never fall back to a cookie when an invalid explicit credential was supplied.
+  if (req.headers.authorization !== undefined)
+    return /^Bearer ([a-f0-9]{64})$/.exec(req.headers.authorization)?.[1];
+  return req.cookies.sn_session;
+}
 const scrypt = promisify(scryptCallback);
 export const hashToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");

@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import { randomUUID } from "node:crypto";
@@ -9,12 +9,19 @@ import {
   newSession,
   passwordHash,
   passwordMatches,
+  requestToken,
 } from "./auth.js";
 import { profileSchema, relationships } from "./profiles.js";
 import { registerChat } from "./chat-routes.js";
 import { registerPrivacy } from "./privacy-routes.js";
 import { registerVoice, voiceReady } from "./voice-routes.js";
 import type { CompanionProvider } from "./companion.js";
+import {
+  configuredPhotoStorage,
+  queuePhotoDeletion,
+  drainPhotoDeletions,
+  type PhotoStorage,
+} from "./photo-storage.js";
 
 export class HttpError extends Error {
   constructor(
@@ -51,13 +58,32 @@ export interface MvpContext {
   user(req: FastifyRequest): string;
   owned(req: FastifyRequest, id: string): Promise<any>;
   reserve(userId: string, kind: string, limit: number): Promise<void>;
+  photoStorage?: PhotoStorage;
 }
 export async function registerMvp(
   app: FastifyInstance,
   db: Database,
   provider?: CompanionProvider,
+  photoStorage: PhotoStorage | undefined = configuredPhotoStorage(),
 ) {
   await migrate(db);
+  let draining = false;
+  const cleanup = async () => {
+    if (draining) return;
+    draining = true;
+    try {
+      await drainPhotoDeletions(db, photoStorage);
+    } catch {
+    } finally {
+      draining = false;
+    }
+  };
+  const timer = setInterval(() => void cleanup(), 60000);
+  timer.unref();
+  app.addHook("onClose", async () => {
+    clearInterval(timer);
+    await cleanup();
+  });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   const users = new WeakMap<FastifyRequest, string>();
@@ -77,6 +103,7 @@ export async function registerMvp(
   };
   const context: MvpContext = {
     db,
+    photoStorage,
     user: (req) => users.get(req)!,
     async owned(req, id) {
       if (!z.string().uuid().safeParse(id).success)
@@ -134,9 +161,24 @@ export async function registerMvp(
           .header("X-Content-Type-Options", "nosniff")
           .header("Referrer-Policy", "no-referrer");
         if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+          const nativeEntry = req.url
+            .split("?")[0]
+            .startsWith("/v2/soulnest/auth/native/");
+          const explicitBearer = /^Bearer [a-f0-9]{64}$/.test(
+            req.headers.authorization ?? "",
+          );
+          if (nativeEntry && req.headers.origin)
+            throw new HttpError(
+              403,
+              "Native sign-in does not accept browser origins.",
+            );
           if (
             req.headers.origin !== origin &&
-            !(!production && req.headers.origin === "http://127.0.0.1:3000")
+            !(!production && req.headers.origin === "http://127.0.0.1:3000") &&
+            !(
+              req.headers.origin === undefined &&
+              (nativeEntry || explicitBearer)
+            )
           )
             throw new HttpError(403, "Request origin is not allowed.");
           if (req.headers["content-type"]?.split(";")[0] !== "application/json")
@@ -147,9 +189,11 @@ export async function registerMvp(
           "/v2/soulnest/health",
           "/v2/soulnest/auth/login",
           "/v2/soulnest/auth/register",
+          "/v2/soulnest/auth/native/register",
+          "/v2/soulnest/auth/native/login",
         ];
         if (publicPaths.includes(req.url.split("?")[0])) return;
-        const token = req.cookies.sn_session;
+        const token = requestToken(req);
         const result = token
           ? await db.query(
               "SELECT user_id FROM sn_sessions WHERE token_hash=$1 AND expires_at>NOW()",
@@ -180,58 +224,73 @@ export async function registerMvp(
           .transform((v) => v.toLowerCase()),
         password: z.string().min(12).max(128),
       });
-      routes.post(
-        "/auth/register",
-        { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
-        async (req, reply) => {
-          const input = credentials
-            .extend({
-              name: z.string().trim().min(1).max(60),
-              adult: z.literal(true),
-              terms: z.literal(true),
-            })
-            .strict()
-            .parse(req.body);
-          const id = randomUUID(),
-            hashed = await passwordHash(input.password);
-          const token = await db.transaction(async (tx) => {
-            await tx.query(
-              "INSERT INTO sn_users(id,email,name,password_hash) VALUES ($1,$2,$3,$4)",
-              [id, input.email, input.name, hashed],
-            );
-            await tx.query(
-              "INSERT INTO sn_subscriptions(user_id) VALUES ($1)",
-              [id],
-            );
-            return newSession(tx, id);
-          });
-          reply.setCookie("sn_session", token, cookies);
-          return { user: { id, name: input.name, email: input.email } };
-        },
-      );
-      routes.post(
-        "/auth/login",
-        { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
-        async (req, reply) => {
-          const input = credentials.strict().parse(req.body);
-          const result = await db.query(
-            "SELECT id,email,name,password_hash FROM sn_users WHERE email=$1",
-            [input.email],
+      const registerHandler = async (
+        req: FastifyRequest,
+        reply: FastifyReply,
+      ) => {
+        const input = credentials
+          .extend({
+            name: z.string().trim().min(1).max(60),
+            adult: z.literal(true),
+            terms: z.literal(true),
+          })
+          .strict()
+          .parse(req.body);
+        const id = randomUUID(),
+          hashed = await passwordHash(input.password);
+        const token = await db.transaction(async (tx) => {
+          await tx.query(
+            "INSERT INTO sn_users(id,email,name,password_hash) VALUES ($1,$2,$3,$4)",
+            [id, input.email, input.name, hashed],
           );
-          const u = result.rows[0];
-          const matches = await passwordMatches(
-            input.password,
-            u?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`,
-          );
-          if (!u || !matches)
-            throw new HttpError(401, "Email or password is incorrect.");
-          reply.setCookie("sn_session", await newSession(db, u.id), cookies);
-          return { user: { id: u.id, name: u.name, email: u.email } };
-        },
-      );
+          await tx.query("INSERT INTO sn_subscriptions(user_id) VALUES ($1)", [
+            id,
+          ]);
+          return newSession(tx, id);
+        });
+        const native = req.url.split("?")[0].includes("/auth/native/");
+        if (!native) reply.setCookie("sn_session", token, cookies);
+        return {
+          user: { id, name: input.name, email: input.email },
+          ...(native ? { token, expiresIn: 7 * 86400 } : {}),
+        };
+      };
+      for (const path of ["/auth/register", "/auth/native/register"])
+        routes.post(
+          path,
+          { config: { rateLimit: { max: 5, timeWindow: "15 minutes" } } },
+          registerHandler,
+        );
+      const loginHandler = async (req: FastifyRequest, reply: FastifyReply) => {
+        const input = credentials.strict().parse(req.body);
+        const result = await db.query(
+          "SELECT id,email,name,password_hash FROM sn_users WHERE email=$1",
+          [input.email],
+        );
+        const u = result.rows[0];
+        const matches = await passwordMatches(
+          input.password,
+          u?.password_hash ?? `${"0".repeat(32)}:${"0".repeat(128)}`,
+        );
+        if (!u || !matches)
+          throw new HttpError(401, "Email or password is incorrect.");
+        const native = req.url.split("?")[0].includes("/auth/native/");
+        const token = await newSession(db, u.id);
+        if (!native) reply.setCookie("sn_session", token, cookies);
+        return {
+          user: { id: u.id, name: u.name, email: u.email },
+          ...(native ? { token, expiresIn: 7 * 86400 } : {}),
+        };
+      };
+      for (const path of ["/auth/login", "/auth/native/login"])
+        routes.post(
+          path,
+          { config: { rateLimit: { max: 10, timeWindow: "15 minutes" } } },
+          loginHandler,
+        );
       routes.post("/auth/logout", async (req, reply) => {
         await db.query("DELETE FROM sn_sessions WHERE token_hash=$1", [
-          hashToken(req.cookies.sn_session!),
+          hashToken(requestToken(req)!),
         ]);
         reply.clearCookie("sn_session", cookies);
         return { ok: true };
@@ -250,6 +309,17 @@ export async function registerMvp(
           )
         ).rows,
       }));
+      routes.put("/account", async (req) => {
+        const { name } = z
+          .object({ name: z.string().trim().min(1).max(60) })
+          .strict()
+          .parse(req.body);
+        await db.query("UPDATE sn_users SET name=$1 WHERE id=$2", [
+          name,
+          context.user(req),
+        ]);
+        return { name };
+      });
       routes.delete("/account", async (req, reply) => {
         const { password } = z
           .object({ password: z.string().max(128) })
@@ -261,7 +331,13 @@ export async function registerMvp(
         ).rows[0];
         if (!u || !(await passwordMatches(password, u.password_hash)))
           throw new HttpError(401, "Password is incorrect.");
-        await db.query("DELETE FROM sn_users WHERE id=$1", [context.user(req)]);
+        await db.transaction(async (tx) => {
+          await queuePhotoDeletion(tx, { userId: context.user(req) });
+          await tx.query("DELETE FROM sn_users WHERE id=$1", [
+            context.user(req),
+          ]);
+        });
+        await cleanup();
         reply.clearCookie("sn_session", cookies);
         return { deleted: true };
       });
@@ -337,10 +413,14 @@ export async function registerMvp(
         "/companions/:id",
         async (req) => {
           await context.owned(req, req.params.id);
-          await db.query(
-            "DELETE FROM sn_companions WHERE id=$1 AND user_id=$2",
-            [req.params.id, context.user(req)],
-          );
+          await db.transaction(async (tx) => {
+            await queuePhotoDeletion(tx, { companionId: req.params.id });
+            await tx.query(
+              "DELETE FROM sn_companions WHERE id=$1 AND user_id=$2",
+              [req.params.id, context.user(req)],
+            );
+          });
+          await cleanup();
           return { deleted: true };
         },
       );

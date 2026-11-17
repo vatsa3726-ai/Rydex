@@ -20,6 +20,19 @@ jobs:
       - run: npm ci
       - run: npm test -w @aiplatform/api
       - run: npm run typecheck -w @aiplatform/api
+      - run: npm test -w @aiplatform/soulnest-mobile
+      - run: npm run typecheck -w @aiplatform/soulnest-mobile
+      - run: npx expo install --check
+        working-directory: ai-platform/apps/soulnest-mobile
+      - run: npm run export:android -w @aiplatform/soulnest-mobile
+        env:
+          EXPO_PUBLIC_API_URL: https://api.example.com/v2/soulnest
+          EXPO_NO_TELEMETRY: '1'
+      - run: npm run export:ios -w @aiplatform/soulnest-mobile
+        env:
+          EXPO_PUBLIC_API_URL: https://api.example.com/v2/soulnest
+          EXPO_NO_TELEMETRY: '1'
       - run: npm run build -w @aiplatform/companion-web
       - run: npm run build -w @aiplatform/models-web
       - run: npm audit --omit=dev
+

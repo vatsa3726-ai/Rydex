@@ -19,6 +19,11 @@
   "overrides": {
     "next": {
       "postcss": "8.5.33"
-    }
+    },
+    "@expo/fingerprint": {
+      "minimatch": "11.0.1"
+    },
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   }
 }
