@@ -81,10 +81,11 @@ In this app directory, also run `npx expo install --check` and `npx expo-doctor`
 
 Eight backend tests and two mobile transport tests pass, native/API type checks pass, Expo Doctor passes 20/20 checks, both Android and iOS JavaScript bundles export, both browser clients build, and the production dependency audit reports zero vulnerabilities. These checks do not replace device/microphone/photo-picker testing.
 
-Expo CLI reports `Not logged in`, so no EAS cloud build, project linking, signed store build, TestFlight upload or store publication has occurred. The existing backend is still not publicly deployed; the earlier Render plan requires workspace payment information. Live AI/speech and S3 credentials are not available. Native Android compilation is being attempted locally and its outcome will be recorded separately. No payments are enabled.
+Expo CLI reports `Not logged in`, so no EAS cloud build, project linking, signed store build, TestFlight upload or store publication has occurred. The existing backend is still not publicly deployed; the earlier Render plan requires workspace payment information. Live AI/speech and S3 credentials are not available. The Android local-preview APK compiled successfully in GitHub Actions and passed the Android v2 signature check. See docs/mobile-build-validation.md for its exact build/version/checksum. Local Windows compilation was stopped after the SDK installer stalled; no device runtime test completed. No payments are enabled.
 
 Official references: https://docs.expo.dev/router/installation/ ; https://docs.expo.dev/versions/latest/sdk/securestore/ ; https://docs.expo.dev/versions/latest/sdk/audio/ ; https://docs.expo.dev/build-reference/apk/ ; https://docs.expo.dev/build/setup/
 
 The Render configuration now starts the shared API directly, with /v2/soulnest/health as its health check. Use its HTTPS origin plus /v2/soulnest as EXPO_PUBLIC_API_URL. The browser client can be deployed separately if needed; no services are deployed by these files.
 
 GitHub Actions can also compile and signature-check a LOCAL PREVIEW APK without EAS credentials. A push whose commit message includes [apk] requests that build. Workflow Dispatch is available after the workflow is on the repository default branch. The uploaded artifact is named soulnest-android-local-preview. Ordinary pushes still validate both native bundles, tests and browser regressions; they do not repeatedly build APKs.
+
