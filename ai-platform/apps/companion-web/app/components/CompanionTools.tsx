@@ -1,0 +1,247 @@
+"use client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { api, type Companion } from "../SoulNest";
+export function CompanionTools({
+  companion: c,
+  disabled,
+  onPhoto,
+}: {
+  companion: Companion;
+  disabled: boolean;
+  onPhoto: (saved: boolean) => void;
+}) {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState(false),
+    [notes, setNotes] = useState<{ id: string; text: string }[]>([]),
+    [note, setNote] = useState(""),
+    [editing, setEditing] = useState(""),
+    [photo, setPhoto] = useState<File | null>(null),
+    [authorized, setAuthorized] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  async function load() {
+    const d = await api(`companions/${c.id}/memories`);
+    setEnabled(d.enabled);
+    setNotes(d.memories);
+  }
+  useEffect(() => {
+    void load().catch((e) => setError(e.message));
+  }, [c.id]);
+  async function action(work: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <section>
+        <h2>Memory, by permission</h2>
+        <p>
+          Only notes you save are remembered long term. Enabled notes are shared
+          with the AI provider alongside messages.
+        </p>
+        <label className="inline-check">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={busy || disabled}
+            onChange={() =>
+              action(async () => {
+                await api(`companions/${c.id}/memory-consent`, "PUT", {
+                  enabled: !enabled,
+                });
+                await load();
+                setEditing("");
+                setNote("");
+              })
+            }
+          />
+          Allow saved memories
+        </label>
+        <small>
+          Turning this off deletes all saved notes. Chat history stays until you
+          clear it separately. A reply already being generated may have received
+          earlier notes.
+        </small>
+        {enabled && (
+          <>
+            <ul>
+              {notes.map((n) => (
+                <li key={n.id}>
+                  {n.text}
+                  <div className="row">
+                    <button
+                      disabled={busy || disabled}
+                      onClick={() => {
+                        setNote(n.text);
+                        setEditing(n.id);
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      disabled={busy || disabled}
+                      onClick={() =>
+                        action(async () => {
+                          await api(
+                            `companions/${c.id}/memories/${n.id}`,
+                            "DELETE",
+                            {},
+                          );
+                          await load();
+                          if (editing === n.id) {
+                            setEditing("");
+                            setNote("");
+                          }
+                        })
+                      }
+                    >
+                      Forget
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <form
+              className="memory-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                action(async () => {
+                  await api(
+                    `companions/${c.id}/memories${editing ? "/" + editing : ""}`,
+                    editing ? "PUT" : "POST",
+                    { text: note.trim() },
+                  );
+                  setNote("");
+                  setEditing("");
+                  await load();
+                });
+              }}
+            >
+              <label>
+                {editing ? "Edit saved note" : "A note to remember"}
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={500}
+                  rows={2}
+                  disabled={busy || disabled}
+                  placeholder="I like concise replies…"
+                />
+              </label>
+              <button disabled={busy || disabled || !note.trim()}>
+                {editing ? "Save changes" : "Save this note"}
+              </button>
+              {editing && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing("");
+                    setNote("");
+                  }}
+                >
+                  Cancel editing
+                </button>
+              )}
+            </form>
+          </>
+        )}
+      </section>
+      <section>
+        <h2>A familiar face</h2>
+        <p>
+          Optional, private avatar. This remains an AI simulation, never the
+          person shown. Photos are not sent to the chat model.
+        </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            action(async () => {
+              if (!photo || photo.size > 2 * 1024 * 1024)
+                throw Error("Choose a photo under 2 MB.");
+              const bytes = new Uint8Array(await photo.arrayBuffer());
+              let binary = "";
+              for (const byte of bytes) binary += String.fromCharCode(byte);
+              await api(`companions/${c.id}/photo`, "PUT", {
+                base64: btoa(binary),
+                authorized,
+              });
+              setPhoto(null);
+              setAuthorized(false);
+              onPhoto(true);
+            });
+          }}
+        >
+          <label>
+            JPG, PNG or WebP · up to 2 MB
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+              disabled={busy || disabled}
+            />
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={authorized}
+              onChange={(e) => setAuthorized(e.target.checked)}
+              required
+            />
+            I own this photo or have permission to use this person’s likeness
+            for an AI simulation.
+          </label>
+          <button disabled={busy || disabled || !photo || !authorized}>
+            Save authorized photo
+          </button>
+        </form>
+        <button
+          disabled={busy || disabled}
+          onClick={() =>
+            action(async () => {
+              await api(`companions/${c.id}/photo`, "DELETE", {});
+              onPhoto(false);
+            })
+          }
+        >
+          Remove photo
+        </button>
+      </section>
+      <section>
+        <h2>Delete companion</h2>
+        <p>
+          Removes this companion, image, messages and saved notes permanently.
+        </p>
+        <button
+          className="danger"
+          disabled={busy || disabled}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Permanently delete ${c.name} and all associated data?`,
+              )
+            )
+              action(async () => {
+                await api(`companions/${c.id}`, "DELETE", {});
+                router.push("/dashboard");
+              });
+          }}
+        >
+          Delete companion
+        </button>
+      </section>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+    </>
+  );
+}

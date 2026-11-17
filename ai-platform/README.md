@@ -1,36 +1,12 @@
 # AI Platform
 
-A shared platform powering two distinct products under HPSV Infra Tech LLP:
+SoulNest is now a **mobile-app-first** product under HPSV Infra Tech LLP. Legacy Rydex at the repository root and Veyra AI source remain preserved.
 
-- **SoulNest** — AI companions, mentors and supportive fictional personas.
-- **Veyra AI** — fictional adult AI models with age-gated, non-explicit experiences.
+- `apps/soulnest-mobile`: primary Android/iOS app built with React Native, Expo and TypeScript.
+- `apps/api`: shared PostgreSQL-backed API, native secure sessions, private S3 photo storage, AI/speech adapters and privacy controls.
+- `apps/companion-web`: existing browser client, retained for compatibility and development.
+- `apps/models-web`: Veyra AI scaffold, unchanged.
 
-## Project isolation
+Start with the [mobile setup and release checklist](apps/soulnest-mobile/README.md). The website is no longer the primary product. Store builds and distribution are separate steps and must not be described as published until verified.
 
-This application is being developed in the `ai-platform/` directory. The existing Rydex application and all of its files remain untouched.
-
-## Planned architecture
-
-- `apps/soulnest-web` — SoulNest experience
-- `apps/veyra-web` — Veyra AI experience
-- `apps/api` — shared API
-- `apps/admin` — operations and moderation console
-- `packages/database` — Prisma schema and migrations
-- `packages/ai-engine` — replaceable model-provider gateway
-- `packages/auth` — identity and session utilities
-- `packages/billing` — plans, subscriptions and entitlements
-- `packages/safety` — age assurance, moderation and policy enforcement
-- `docs` — architecture and implementation decisions
-
-## Safety and privacy
-
-- Age assurance is required before access to age-restricted experiences.
-- Veyra AI personas are fictional adults; content is non-explicit.
-- Family-role companions on SoulNest remain strictly non-sexual.
-- Brand data, conversations and memories are isolated.
-- Cross-brand account linking and memory sharing require explicit consent.
-- Payment checkout remains disabled until the payment provider approves both business verticals.
-
-## Status
-
-Initial project foundation. No production credentials or payment secrets belong in source control.
+Without provider credentials, replies are clearly labelled samples. Payments remain disabled. The isolated backend deployment configuration is in `render.soulnest.yaml`; do not replace the repository-root Rydex Blueprint.

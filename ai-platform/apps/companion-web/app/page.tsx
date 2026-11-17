@@ -1,1 +1,1 @@
-export default function Home() { return <main style={{maxWidth:800,margin:"auto",padding:"80px 24px"}}><p>SOULNEST</p><h1 style={{fontSize:56}}>A place for meaningful conversations.</h1><p>Meet AI companions designed for conversation, encouragement and creativity.</p><p>Coming soon — early preview. AI companions are fictional and are not human or professional advisors.</p></main>; }
+export { default } from "./SoulNest";

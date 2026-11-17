@@ -1,10 +1,11 @@
-import Fastify from "fastify";
-import cors from "@fastify/cors";
-const app = Fastify({ logger: true });
-const allowed = (process.env.CORS_ORIGINS ?? "").split(",").map(x => x.trim()).filter(Boolean);
-await app.register(cors, { origin: allowed.length ? allowed : false });
-app.get("/health", async () => ({ status: "ok", service: "ai-platform-api" }));
-app.get("/v1/brands", async () => ({ brands: [{ id: "soulnest", name: "SoulNest" }, { id: "veyra", name: "Veyra AI", ageRestricted: true }] }));
-app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: "Not found" }));
+import { buildApp } from "./app.js";
+import { createDatabase } from "./database.js";
+const database = await createDatabase();
+const app = await buildApp(undefined, database);
+app.addHook("onClose", () => database.close());
+for (const signal of ["SIGINT", "SIGTERM"])
+  process.on(signal, () => {
+    void app.close();
+  });
 const port = Number(process.env.PORT ?? 4000);
-await app.listen({ port, host: "0.0.0.0" });
+await app.listen({ port, host: process.env.HOST ?? "0.0.0.0" });

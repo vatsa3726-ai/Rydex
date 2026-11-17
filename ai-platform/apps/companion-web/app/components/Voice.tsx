@@ -1,0 +1,213 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { api } from "../SoulNest";
+export function Voice({
+  companionId,
+  lastMessageId,
+  onText,
+  disabled,
+}: {
+  companionId: string;
+  lastMessageId?: string;
+  onText: (text: string) => void;
+  disabled: boolean;
+}) {
+  const [ready, setReady] = useState(false),
+    [recording, setRecording] = useState(false),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [voice, setVoice] = useState("alloy"),
+    [playing, setPlaying] = useState(false);
+  const recorder = useRef<MediaRecorder | null>(null),
+    stream = useRef<MediaStream | null>(null),
+    timer = useRef<ReturnType<typeof setTimeout> | null>(null),
+    audio = useRef<HTMLAudioElement | null>(null),
+    audioUrl = useRef(""),
+    mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    api("config")
+      .then((d) => {
+        if (mounted.current) setReady(d.voiceEnabled);
+      })
+      .catch(() => {});
+    return () => {
+      mounted.current = false;
+      if (timer.current) clearTimeout(timer.current);
+      if (recorder.current?.state === "recording") recorder.current.stop();
+      stream.current?.getTracks().forEach((t) => t.stop());
+      audio.current?.pause();
+      if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+    };
+  }, []);
+  async function record() {
+    setError("");
+    setBusy(true);
+    try {
+      if (
+        !navigator.mediaDevices?.getUserMedia ||
+        typeof MediaRecorder === "undefined"
+      )
+        throw Error(
+          "Your browser cannot record audio here. Use HTTPS and a supported browser, or keep typing.",
+        );
+      stream.current = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      if (!mounted.current) {
+        stream.current.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      const mime = ["audio/webm", "audio/mp4", "audio/ogg"].find((v) =>
+        MediaRecorder.isTypeSupported(v),
+      );
+      if (!mime)
+        throw Error("No supported recording format. Please keep typing.");
+      const r = new MediaRecorder(stream.current, { mimeType: mime }),
+        chunks: BlobPart[] = [];
+      recorder.current = r;
+      r.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      r.onstop = async () => {
+        stream.current?.getTracks().forEach((t) => t.stop());
+        if (timer.current) clearTimeout(timer.current);
+        if (!mounted.current) return;
+        setRecording(false);
+        setBusy(true);
+        try {
+          const data = new Blob(chunks, { type: mime });
+          if (data.size > 5 * 1024 * 1024)
+            throw Error("Recording is too large. Try a shorter message.");
+          const bytes = new Uint8Array(await data.arrayBuffer());
+          let binary = "";
+          for (const byte of bytes) binary += String.fromCharCode(byte);
+          const result = await api(
+            `companions/${companionId}/transcribe`,
+            "POST",
+            { base64: btoa(binary), mime },
+          );
+          if (mounted.current) onText(result.text);
+        } catch (e) {
+          if (mounted.current) setError((e as Error).message);
+        } finally {
+          if (mounted.current) setBusy(false);
+        }
+      };
+      r.start();
+      setRecording(true);
+      timer.current = setTimeout(
+        () => r.state === "recording" && r.stop(),
+        45000,
+      );
+    } catch (e) {
+      stream.current?.getTracks().forEach((t) => t.stop());
+      setError(
+        (e as Error).name === "NotAllowedError"
+          ? "Microphone permission was denied. You can allow it in browser settings or keep typing."
+          : (e as Error).message,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function speak() {
+    setError("");
+    setBusy(true);
+    try {
+      const response = await fetch(
+        `/api/soulnest/companions/${companionId}/speech`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId: lastMessageId, voice }),
+        },
+      );
+      if (!response.ok) throw Error((await response.json()).error);
+      audio.current?.pause();
+      if (audioUrl.current) URL.revokeObjectURL(audioUrl.current);
+      const blob = await response.blob();
+      if (!mounted.current) return;
+      audioUrl.current = URL.createObjectURL(blob);
+      const a = new Audio(audioUrl.current);
+      audio.current = a;
+      a.onended = () => setPlaying(false);
+      await a.play();
+      setPlaying(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section>
+      <h2>Give the conversation a voice</h2>
+      <p>
+        Built-in synthetic voices only. Audio is AI-generated, never a real
+        person’s voice.
+      </p>
+      {!ready && (
+        <p className="notice">
+          Voice is not connected yet. A speech-provider key and model settings
+          are required.
+        </p>
+      )}
+      <p>
+        <small>
+          Recording asks for microphone permission. Stop & transcribe sends
+          audio to the speech provider; review the transcript before sending it
+          as chat. Recordings stop after 45 seconds and are not saved by
+          SoulNest.
+        </small>
+      </p>
+      <div className="row">
+        <button
+          disabled={!ready || busy || disabled || playing}
+          onClick={() => (recording ? recorder.current?.stop() : void record())}
+        >
+          {recording ? "Stop & transcribe" : "Record a message"}
+        </button>
+      </div>
+      {recording && (
+        <p role="status">Recording… select Stop & transcribe when finished.</p>
+      )}
+      <label>
+        Synthetic voice
+        <select
+          value={voice}
+          onChange={(e) => setVoice(e.target.value)}
+          disabled={busy || recording}
+        >
+          <option value="alloy">Alloy</option>
+          <option value="coral">Coral</option>
+          <option value="sage">Sage</option>
+        </select>
+      </label>
+      <div className="row">
+        <button
+          disabled={!ready || !lastMessageId || busy || disabled || recording}
+          onClick={speak}
+        >
+          Listen to latest AI reply
+        </button>
+        {playing && (
+          <button
+            onClick={() => {
+              audio.current?.pause();
+              setPlaying(false);
+            }}
+          >
+            Stop playback
+          </button>
+        )}
+      </div>
+      {busy && <p role="status">Preparing audio…</p>}
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
