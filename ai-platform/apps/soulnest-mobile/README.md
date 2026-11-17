@@ -84,3 +84,7 @@ Eight backend tests and two mobile transport tests pass, native/API type checks 
 Expo CLI reports `Not logged in`, so no EAS cloud build, project linking, signed store build, TestFlight upload or store publication has occurred. The existing backend is still not publicly deployed; the earlier Render plan requires workspace payment information. Live AI/speech and S3 credentials are not available. Native Android compilation is being attempted locally and its outcome will be recorded separately. No payments are enabled.
 
 Official references: https://docs.expo.dev/router/installation/ ; https://docs.expo.dev/versions/latest/sdk/securestore/ ; https://docs.expo.dev/versions/latest/sdk/audio/ ; https://docs.expo.dev/build-reference/apk/ ; https://docs.expo.dev/build/setup/
+
+The Render configuration now starts the shared API directly, with /v2/soulnest/health as its health check. Use its HTTPS origin plus /v2/soulnest as EXPO_PUBLIC_API_URL. The browser client can be deployed separately if needed; no services are deployed by these files.
+
+GitHub Actions can also compile and signature-check a LOCAL PREVIEW APK without EAS credentials. A push whose commit message includes [apk] requests that build. Workflow Dispatch is available after the workflow is on the repository default branch. The uploaded artifact is named soulnest-android-local-preview. Ordinary pushes still validate both native bundles, tests and browser regressions; they do not repeatedly build APKs.

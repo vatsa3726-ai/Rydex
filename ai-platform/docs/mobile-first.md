@@ -13,3 +13,5 @@ SoulNest's primary client is now `apps/soulnest-mobile`, using React Native + Ex
 These are native React Native screens, not a website embedded in a WebView. Native session tokens stay in SecureStore; private conversations are retrieved from the server. Browser cookies remain supported without weakening origin/CSRF checks. Payments remain inactive.
 
 See `apps/soulnest-mobile/README.md` for the implemented feature list, validation results and release blockers. Build configuration is not proof of a native build or publication.
+
+The isolated Render Blueprint now deploys the API directly for native clients. The backend public base is /v2/soulnest; no browser proxy is required. No Render resources were changed or deployed.

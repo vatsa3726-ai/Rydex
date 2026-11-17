@@ -8,9 +8,9 @@ services:
     plan: 0.5c-512mb
     numInstances: 1
     autoDeployTrigger: "off"
-    buildCommand: npm ci --include=dev && npm run typecheck -w @aiplatform/api && npm run build -w @aiplatform/companion-web
-    startCommand: node scripts/start-soulnest.mjs
-    healthCheckPath: /api/soulnest/health
+    buildCommand: npm ci --include=dev && npm run typecheck -w @aiplatform/api
+    startCommand: npm start -w @aiplatform/api
+    healthCheckPath: /v2/soulnest/health
     envVars:
       - key: NODE_VERSION
         value: "24.21.0"
@@ -35,3 +35,4 @@ databases:
     databaseName: soulnest
     user: soulnest
     ipAllowList: []
+
