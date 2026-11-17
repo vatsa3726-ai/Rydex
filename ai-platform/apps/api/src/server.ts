@@ -1,0 +1,10 @@
+import Fastify from "fastify";
+import cors from "@fastify/cors";
+const app = Fastify({ logger: true });
+const allowed = (process.env.CORS_ORIGINS ?? "").split(",").map(x => x.trim()).filter(Boolean);
+await app.register(cors, { origin: allowed.length ? allowed : false });
+app.get("/health", async () => ({ status: "ok", service: "ai-platform-api" }));
+app.get("/v1/brands", async () => ({ brands: [{ id: "soulnest", name: "SoulNest" }, { id: "veyra", name: "Veyra AI", ageRestricted: true }] }));
+app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: "Not found" }));
+const port = Number(process.env.PORT ?? 4000);
+await app.listen({ port, host: "0.0.0.0" });
