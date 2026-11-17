@@ -15,3 +15,11 @@ Implemented server-owned conversation history, pagination, deletion, contextual 
 Files: apps/api/src/{ai-provider,chat-routes,profiles}.ts and tests, schema/app integration, companion-web/app/components/Chat.tsx.
 
 Validation: five API tests passed, including ownership, history, duplicate turns, prompts and mocked provider integration. API/web type checks passed. Live-provider evaluation is blocked by AI_PROVIDER_API_KEY and AI_CHAT_MODEL. Deployment remains inactive.
+
+## 3 — Private photos, memory and privacy controls
+
+Implemented authorized photo uploads (JPG/PNG/WebP, 2 MB and 20 MP limits), server-side image validation/resizing/metadata removal, owner-only image retrieval and deletion, optional persistent memories with consent timestamps/version, note viewing/editing/deletion, consent withdrawal, companion deletion, and account data export. Photos are private database blobs and are not sent to the AI model. Likeness permission is a recorded user attestation, not independently verified consent.
+
+Files: apps/api/src/privacy-routes.ts, route integration, companion-web/app/components/CompanionTools.tsx, chat/settings integration, extended mvp.test.ts.
+
+Validation: five tests pass with expanded assertions for memory consent, prompt retrieval, cross-user editing/reading, image decoding and rejected SVGs, export, and deletion cascades. API and web type checks pass. Deployment remains inactive. Production encryption/backups/retention and live-provider retention review remain operational requirements.
