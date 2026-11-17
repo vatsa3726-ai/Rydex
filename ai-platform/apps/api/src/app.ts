@@ -20,6 +20,7 @@ type Session = {
 export async function buildApp(
   provider: CompanionProvider = new PreviewProvider(),
   database?: Database,
+  mvpProvider?: CompanionProvider,
 ) {
   const app = Fastify({ logger: false, bodyLimit: 8_000_000 });
   const sessions = new Map<string, Session>();
@@ -211,6 +212,6 @@ export async function buildApp(
   app.setNotFoundHandler((_req, reply) =>
     reply.code(404).send({ error: "Not found" }),
   );
-  if (database) await registerMvp(app, database);
+  if (database) await registerMvp(app, database, mvpProvider);
   return app;
 }

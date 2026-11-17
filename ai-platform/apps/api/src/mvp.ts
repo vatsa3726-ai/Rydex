@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { migrate, type Database } from './database.js';
 import { hashToken, newSession, passwordHash, passwordMatches } from './auth.js';
 import { profileSchema, relationships } from './profiles.js';
+import { registerChat } from './chat-routes.js';
+import type { CompanionProvider } from './companion.js';
 
 export class HttpError extends Error { constructor(public statusCode: number, message: string) { super(message); } }
 export const plans = {
@@ -18,7 +20,7 @@ export interface MvpContext {
   owned(req: FastifyRequest, id: string): Promise<any>;
   reserve(userId: string, kind: string, limit: number): Promise<void>;
 }
-export async function registerMvp(app: FastifyInstance, db: Database) {
+export async function registerMvp(app: FastifyInstance, db: Database, provider?: CompanionProvider) {
   await migrate(db);
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
@@ -107,6 +109,7 @@ export async function registerMvp(app: FastifyInstance, db: Database) {
       return {companion:await context.owned(req,req.params.id)};
     });
     routes.delete<{Params:{id:string}}>('/companions/:id',async req=>{await context.owned(req,req.params.id);await db.query('DELETE FROM sn_companions WHERE id=$1 AND user_id=$2',[req.params.id,context.user(req)]);return {deleted:true};});
+    await registerChat(routes, context, provider);
   },{prefix:'/v2/soulnest'});
   return context;
 }
