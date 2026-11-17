@@ -36,3 +36,40 @@ jobs:
       - run: npm run build -w @aiplatform/models-web
       - run: npm audit --omit=dev
 
+  android-preview:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPO_PUBLIC_LOCAL_PREVIEW: '1'
+      EXPO_PUBLIC_API_URL: http://10.0.2.2:4000/v2/soulnest
+      EXPO_NO_TELEMETRY: '1'
+      CI: '1'
+    defaults:
+      run:
+        working-directory: ai-platform/apps/soulnest-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.21.0'
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+        working-directory: ai-platform
+      - run: npx expo prebuild --platform android --no-install
+      - run: chmod +x android/gradlew && android/gradlew -p android assembleRelease '-PreactNativeArchitectures=arm64-v8a,x86_64' --no-daemon --console=plain --max-workers=2
+      - name: Verify preview APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --verbose android/app/build/outputs/apk/release/app-release.apk
+          sha256sum android/app/build/outputs/apk/release/app-release.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soulnest-android-local-preview
+          path: ai-platform/apps/soulnest-mobile/android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 14
