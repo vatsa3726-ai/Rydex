@@ -23,3 +23,11 @@ Implemented authorized photo uploads (JPG/PNG/WebP, 2 MB and 20 MP limits), serv
 Files: apps/api/src/privacy-routes.ts, route integration, companion-web/app/components/CompanionTools.tsx, chat/settings integration, extended mvp.test.ts.
 
 Validation: five tests pass with expanded assertions for memory consent, prompt retrieval, cross-user editing/reading, image decoding and rejected SVGs, export, and deletion cascades. API and web type checks pass. Deployment remains inactive. Production encryption/backups/retention and live-provider retention review remain operational requirements.
+
+## 4 — Voice and multilingual integration
+
+Implemented microphone permission/error handling, bounded recording with review-before-send transcription, synthetic voice selection/playback/stop, and credential-gated speech-to-text/text-to-speech adapters. English, Hindi and Kannada are saved per companion and passed to the AI and transcription providers. Preview mode includes basic Hindi/Kannada samples, not a multilingual language model. No voice cloning is exposed. Full-duplex real-time conversation and token streaming remain deferred.
+
+Files: apps/api/src/voice-routes.ts and voice.test.ts, companion language prompt/preview handling, companion-web/app/components/Voice.tsx and Chat integration.
+
+Validation: six tests pass (including a mocked speech adapter and disabled-provider behavior); API/web type checks pass. Live speech and multilingual quality evaluation are blocked by AI_PROVIDER_API_KEY, AI_CHAT_MODEL, AI_STT_MODEL and AI_TTS_MODEL. Browser microphone/device testing remains to be performed. Deployment remains inactive.

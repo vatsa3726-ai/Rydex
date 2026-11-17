@@ -8,6 +8,7 @@ import { hashToken, newSession, passwordHash, passwordMatches } from './auth.js'
 import { profileSchema, relationships } from './profiles.js';
 import { registerChat } from './chat-routes.js';
 import { registerPrivacy } from './privacy-routes.js';
+import { registerVoice, voiceReady } from './voice-routes.js';
 import type { CompanionProvider } from './companion.js';
 
 export class HttpError extends Error { constructor(public statusCode: number, message: string) { super(message); } }
@@ -63,7 +64,7 @@ export async function registerMvp(app: FastifyInstance, db: Database, provider?:
       if (!result.rows[0]) throw new HttpError(401, 'Please sign in to continue.');
       users.set(req, result.rows[0].user_id);
     });
-    routes.get('/config', async () => ({ relationships, plans, paymentsEnabled: false, provider: process.env.AI_PROVIDER === 'openai' ? 'openai' : 'preview', voiceEnabled: Boolean(process.env.AI_PROVIDER_API_KEY && process.env.AI_PROVIDER === 'openai') }));
+    routes.get('/config', async () => ({ relationships, plans, paymentsEnabled: false, provider: process.env.AI_PROVIDER === 'openai' ? 'openai' : 'preview', voiceEnabled: voiceReady() }));
     const credentials = z.object({ email: z.string().trim().email().max(254).transform(v=>v.toLowerCase()), password: z.string().min(12).max(128) });
     routes.post('/auth/register', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (req, reply) => {
       const input = credentials.extend({ name: z.string().trim().min(1).max(60), adult: z.literal(true), terms: z.literal(true) }).strict().parse(req.body);
@@ -112,6 +113,7 @@ export async function registerMvp(app: FastifyInstance, db: Database, provider?:
     routes.delete<{Params:{id:string}}>('/companions/:id',async req=>{await context.owned(req,req.params.id);await db.query('DELETE FROM sn_companions WHERE id=$1 AND user_id=$2',[req.params.id,context.user(req)]);return {deleted:true};});
     await registerChat(routes, context, provider);
     await registerPrivacy(routes, context);
+    await registerVoice(routes, context);
   },{prefix:'/v2/soulnest'});
   return context;
 }

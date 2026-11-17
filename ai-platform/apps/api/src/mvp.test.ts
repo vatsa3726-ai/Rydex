@@ -40,6 +40,7 @@ test('accounts and companion CRUD enforce age, sessions, ownership and deletion'
  assert.equal((await call('PUT',`companions/${id}/photo`,{base64:photo,authorized:true},a)).statusCode,200);
  assert.equal((await call('GET',`companions/${id}/photo`,undefined,b)).statusCode,404);
  const image=await call('GET',`companions/${id}/photo`,undefined,a);assert.equal(image.headers['content-type'],'image/jpeg');assert.equal(image.headers['cache-control'],'no-store');
+ assert.equal((await call('POST',`companions/${id}/transcribe`,{base64:'YQ==',mime:'audio/webm'},a)).statusCode,503);
  const exported=(await call('GET','export',undefined,a)).json();assert.equal(exported.companions[0].photo.base64.length>0,true);assert.equal(exported.user.password_hash,undefined);
  await call('DELETE',`companions/${id}/messages`,{},a);assert.equal((await call('GET',`companions/${id}/messages`,undefined,a)).json().messages.length,0);
 assert.equal((await call('POST','auth/login',{email:'a@example.com',password:'a wrong password long enough'})).statusCode,401);
@@ -50,5 +51,6 @@ assert.equal((await call('POST','auth/login',{email:'a@example.com',password:'a 
  assert.equal((await db.query('SELECT * FROM sn_companions')).rows.length,0);for(const table of ['sn_photos','sn_messages','sn_memories','sn_turns'])assert.equal((await db.query('SELECT * FROM '+table)).rows.length,0);
  }finally{await app.close();await db.close();}
 });
+
 
 
