@@ -1,0 +1,1 @@
+export default function Home() { return <main style={{maxWidth:800,margin:"auto",padding:"80px 24px"}}><p>VEYRA AI</p><h1 style={{fontSize:56}}>Meet a new kind of digital personality.</h1><p>Fictional adult AI personalities, creative storytelling and conversation.</p><p>18+ only. Preview page; age verification and access controls are required before launch.</p></main>; }
