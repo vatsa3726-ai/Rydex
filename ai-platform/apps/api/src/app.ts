@@ -1,6 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
+import type { Database } from './database.js';
+import { registerMvp } from './mvp.js';
 import {
   boundaries,
   roles,
@@ -17,8 +19,9 @@ type Session = {
 };
 export async function buildApp(
   provider: CompanionProvider = new PreviewProvider(),
+  database?: Database,
 ) {
-  const app = Fastify({ logger: false, bodyLimit: 32_768 });
+  const app = Fastify({ logger: false, bodyLimit: 8_000_000 });
   const sessions = new Map<string, Session>();
   const allowed = (process.env.CORS_ORIGINS ?? "")
     .split(",")
@@ -208,5 +211,6 @@ export async function buildApp(
   app.setNotFoundHandler((_req, reply) =>
     reply.code(404).send({ error: "Not found" }),
   );
+  if (database) await registerMvp(app, database);
   return app;
 }
