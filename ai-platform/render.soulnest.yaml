@@ -35,4 +35,3 @@ databases:
     databaseName: soulnest
     user: soulnest
     ipAllowList: []
-
