@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "fastify": "^5.2.0",
@@ -15,5 +16,6 @@
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "@types/node": "^22.0.0"
-  }
+  },
+  "type": "module"
 }
