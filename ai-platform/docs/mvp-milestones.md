@@ -31,3 +31,13 @@ Implemented microphone permission/error handling, bounded recording with review-
 Files: apps/api/src/voice-routes.ts and voice.test.ts, companion language prompt/preview handling, companion-web/app/components/Voice.tsx and Chat integration.
 
 Validation: six tests pass (including a mocked speech adapter and disabled-provider behavior); API/web type checks pass. Live speech and multilingual quality evaluation are blocked by AI_PROVIDER_API_KEY, AI_CHAT_MODEL, AI_STT_MODEL and AI_TTS_MODEL. Browser microphone/device testing remains to be performed. Deployment remains inactive.
+
+## 5 — Subscription scaffolding, security and Render configuration
+
+Prepared free/premium plan metadata, inactive subscription records and visible usage settings; no payment collection or self-upgrade route is enabled. Added persistent daily quotas, per-minute request limits, production cookie/origin checks, database-aware health, anonymous-preview retirement, fail-closed moderation, browser security headers, graceful combined-service startup, isolated Render configuration and a SoulNest CI workflow. Patched the inherited PostCSS advisories using an 8.5.33 override without changing Veyra source.
+
+Files: ai-platform/render.soulnest.yaml, scripts/start-soulnest.mjs, .env.example, workspace package/lockfile, API/web security updates, database.test.ts, documentation and .github/workflows/soulnest.yml.
+
+Validation: seven SoulNest/API tests pass, including restart persistence and quota enforcement; five legacy Rydex security tests pass; API type check and both SoulNest/Veyra production builds pass; production dependency audit reports zero vulnerabilities. Render public-schema validation passed. An HTTP end-to-end check passed through the built site for security headers, signup, login, companion creation, Kannada preview chat, saved memory/history, export and account deletion. Browser automation could not initialize (missing kernel assets), so visual layout and device microphone interactions have not been manually verified.
+
+Deployment: files are prepared; the user authorized planning only in Shree’s workspace. No services or billing have been activated. Live AI/speech credentials, email verification/recovery, stronger age assurance, model safety/language evaluation and production operational review remain open. Streaming and full-duplex speech are deferred. The Render plan is to be reviewed separately before application.

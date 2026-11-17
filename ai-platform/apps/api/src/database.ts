@@ -1,35 +1,59 @@
-import { PGlite } from '@electric-sql/pglite';
-import pg from 'pg';
+import { PGlite } from "@electric-sql/pglite";
+import pg from "pg";
 
 export interface Database {
   query(sql: string, params?: any[]): Promise<{ rows: any[] }>;
   transaction<T>(work: (db: Database) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
-export async function createDatabase(url = process.env.DATABASE_URL, local = process.env.SOULNEST_DATA_DIR ?? './.soulnest-data'): Promise<Database> {
-  if (process.env.NODE_ENV === 'production' && !url) throw Error('DATABASE_URL is required in production');
+export async function createDatabase(
+  url = process.env.DATABASE_URL,
+  local = process.env.SOULNEST_DATA_DIR ?? "./.soulnest-data",
+): Promise<Database> {
+  if (process.env.NODE_ENV === "production" && !url)
+    throw Error("DATABASE_URL is required in production");
   if (url) {
-    const pool = new pg.Pool({ connectionString: url, max: 5, connectionTimeoutMillis: 10000 });
+    const pool = new pg.Pool({
+      connectionString: url,
+      max: 5,
+      connectionTimeoutMillis: 10000,
+    });
     const db: Database = {
       query: (sql, params) => pool.query(sql, params),
       async transaction(work) {
         const client = await pool.connect();
-        try { await client.query('BEGIN'); const result = await work({ ...db, query: (sql, params) => client.query(sql, params) }); await client.query('COMMIT'); return result; }
-        catch (e) { await client.query('ROLLBACK'); throw e; } finally { client.release(); }
+        try {
+          await client.query("BEGIN");
+          const result = await work({
+            ...db,
+            query: (sql, params) => client.query(sql, params),
+          });
+          await client.query("COMMIT");
+          return result;
+        } catch (e) {
+          await client.query("ROLLBACK");
+          throw e;
+        } finally {
+          client.release();
+        }
       },
       close: () => pool.end(),
     };
     return db;
   }
-  const localDb = new PGlite(local === ':memory:' ? undefined : local);
-  const adapt = (conn: any): Database => ({ query: (sql, params) => conn.query(sql, params), transaction: work => conn.transaction((tx: any) => work(adapt(tx))), close: () => localDb.close() });
+  const localDb = new PGlite(local === ":memory:" ? undefined : local);
+  const adapt = (conn: any): Database => ({
+    query: (sql, params) => conn.query(sql, params),
+    transaction: (work) => conn.transaction((tx: any) => work(adapt(tx))),
+    close: () => localDb.close(),
+  });
   await localDb.waitReady;
   return adapt(localDb);
 }
 
 // Additive, namespaced schema; no legacy Rydex tables are read or altered.
 export async function migrate(db: Database) {
-  await db.transaction(async tx => {
+  await db.transaction(async (tx) => {
     for (const sql of [
       `CREATE TABLE IF NOT EXISTS sn_users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, name TEXT NOT NULL, password_hash TEXT NOT NULL, adult_confirmed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       `CREATE TABLE IF NOT EXISTS sn_sessions (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES sn_users(id) ON DELETE CASCADE, expires_at TIMESTAMPTZ NOT NULL)`,
@@ -42,8 +66,7 @@ export async function migrate(db: Database) {
       `CREATE TABLE IF NOT EXISTS sn_memories (id TEXT PRIMARY KEY, companion_id TEXT NOT NULL REFERENCES sn_companions(id) ON DELETE CASCADE, text TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`,
       `CREATE TABLE IF NOT EXISTS sn_subscriptions (user_id TEXT PRIMARY KEY REFERENCES sn_users(id) ON DELETE CASCADE, plan TEXT NOT NULL DEFAULT 'free', status TEXT NOT NULL DEFAULT 'inactive', provider_ref TEXT)`,
       `CREATE TABLE IF NOT EXISTS sn_usage (user_id TEXT NOT NULL REFERENCES sn_users(id) ON DELETE CASCADE, day TEXT NOT NULL, kind TEXT NOT NULL, count INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(user_id,day,kind))`,
-    ]) await tx.query(sql);
+    ])
+      await tx.query(sql);
   });
 }
-
-

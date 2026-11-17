@@ -1,1 +1,1 @@
-export {default} from '../SoulNest';
+export { default } from "../SoulNest";

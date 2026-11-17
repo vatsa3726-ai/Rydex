@@ -49,8 +49,10 @@ export class PreviewProvider implements CompanionProvider {
       return "That sounds like a lot to carry. Would it help to talk about what has felt hardest today?";
     if (/happy|excited|proud|good news/i.test(last))
       return "That sounds like something worth enjoying. What made that moment special for you?";
-    if (system.includes('Respond in Hindi')) return 'हम आराम से बात कर सकते हैं। आज आपके मन में क्या चल रहा है?';
-    if (system.includes('Respond in Kannada')) return 'ನಾವು ನಿಧಾನವಾಗಿ ಮಾತನಾಡಬಹುದು. ಇಂದು ನಿಮ್ಮ ಮನಸ್ಸಿನಲ್ಲಿ ಏನಿದೆ?';
+    if (system.includes("Respond in Hindi"))
+      return "हम आराम से बात कर सकते हैं। आज आपके मन में क्या चल रहा है?";
+    if (system.includes("Respond in Kannada"))
+      return "ನಾವು ನಿಧಾನವಾಗಿ ಮಾತನಾಡಬಹುದು. ಇಂದು ನಿಮ್ಮ ಮನಸ್ಸಿನಲ್ಲಿ ಏನಿದೆ?";
     return "We can take this at your pace. Would you like a listening ear, or help thinking through a next step?";
   }
 }

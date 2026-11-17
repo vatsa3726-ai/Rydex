@@ -1,8 +1,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { randomUUID } from "node:crypto";
-import type { Database } from './database.js';
-import { registerMvp } from './mvp.js';
+import type { Database } from "./database.js";
+import { registerMvp } from "./mvp.js";
 import {
   boundaries,
   roles,
@@ -41,6 +41,13 @@ export async function buildApp(
   app.addHook("onRequest", async (req, reply) => {
     if (!req.url.startsWith("/v1/soulnest")) return;
     reply.header("Cache-Control", "no-store");
+    if (database)
+      return reply
+        .code(410)
+        .send({
+          error:
+            "The anonymous preview has been retired. Use your private SoulNest account.",
+        });
     if (
       req.method === "OPTIONS" ||
       req.url === "/v1/soulnest/companions" ||
