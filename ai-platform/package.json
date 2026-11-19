@@ -11,7 +11,9 @@
     "dev": "npm run dev --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "veyra:start": "node scripts/start-veyra.mjs",
+    "veyra:dev": "node scripts/start-veyra.mjs --dev"
   },
   "engines": {
     "node": ">=20"

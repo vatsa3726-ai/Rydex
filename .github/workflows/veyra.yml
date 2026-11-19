@@ -1,0 +1,27 @@
+name: Veyra validation
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["ai-platform/apps/models-web/**", "ai-platform/apps/api/**", "ai-platform/scripts/start-veyra.mjs", "ai-platform/render.veyra.yaml", ".github/workflows/veyra.yml"]
+  push:
+    paths: ["ai-platform/apps/models-web/**", "ai-platform/apps/api/**", "ai-platform/scripts/start-veyra.mjs", "ai-platform/render.veyra.yaml", ".github/workflows/veyra.yml"]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-platform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: ai-platform/package-lock.json
+      - run: npm ci
+      - run: npm test -w @aiplatform/api
+      - run: npm run typecheck -w @aiplatform/api
+      - run: npm run build -w @aiplatform/models-web
+      - run: npm run build -w @aiplatform/companion-web
+      - run: npm test -w @aiplatform/soulnest-mobile
+      - run: npm audit --omit=dev
