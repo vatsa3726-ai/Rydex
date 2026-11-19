@@ -1,3 +1,14 @@
 import type { ReactNode } from "react";
-export const metadata = { title: "Veyra AI", description: "Fictional AI personalities for adults" };
-export default function RootLayout({ children }: { children: ReactNode }) { return <html lang="en"><body style={{fontFamily:"system-ui",margin:0,background:"#17131f",color:"#f9efff"}}>{children}</body></html>; }
+import "./globals.css";
+export const metadata = {
+  title: "Veyra AI — Imagined, unmistakably",
+  description:
+    "A private world of fictional adult AI personalities by HPSV Infra Tech LLP. 18+ access. All characters are fictional and 21+.",
+};
+export default function Layout({ children }: { children: ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}

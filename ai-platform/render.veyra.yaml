@@ -1,0 +1,45 @@
+# Independent Veyra stack. Does not manage SoulNest or the root Rydex Blueprint.
+# Review costs and service settings before creating resources.
+services:
+  - type: web
+    name: veyra-ai-web
+    runtime: node
+    rootDir: ai-platform
+    region: oregon
+    plan: 1c-2g
+    numInstances: 1
+    autoDeployTrigger: "off"
+    buildCommand: npm ci --include=dev && npm run typecheck -w @aiplatform/api && npm run build -w @aiplatform/models-web
+    startCommand: npm run veyra:start
+    healthCheckPath: /api/veyra/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24.21.0"
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: veyra-ai-db
+          property: connectionString
+      - key: VEYRA_API_ORIGIN
+        value: http://127.0.0.1:4001
+      # Configure approved providers in the Dashboard before opening restricted access.
+      - key: VEYRA_AI_PROVIDER
+        value: preview
+      - key: VEYRA_AGE_MODE
+        value: provider
+      - key: VEYRA_AGE_WEBHOOK_SECRET
+        generateValue: true
+      - key: VEYRA_FREE_DAILY_MESSAGES
+        value: "20"
+      - key: VEYRA_PREMIUM_DAILY_MESSAGES
+        value: "200"
+databases:
+  - name: veyra-ai-db
+    region: oregon
+    plan: 0.1c-256mb
+    databaseName: veyra
+    user: veyra
+    ipAllowList: []

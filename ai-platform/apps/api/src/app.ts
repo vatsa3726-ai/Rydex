@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "./database.js";
 import { registerMvp } from "./mvp.js";
 import type { PhotoStorage } from "./photo-storage.js";
+import { registerVeyra, type VeyraOptions } from "./veyra.js";
 import {
   boundaries,
   roles,
@@ -23,6 +24,7 @@ export async function buildApp(
   database?: Database,
   mvpProvider?: CompanionProvider,
   photoStorage?: PhotoStorage,
+  veyraOptions?: VeyraOptions,
 ) {
   const app = Fastify({ logger: false, bodyLimit: 8_000_000 });
   const sessions = new Map<string, Session>();
@@ -219,6 +221,11 @@ export async function buildApp(
   app.setNotFoundHandler((_req, reply) =>
     reply.code(404).send({ error: "Not found" }),
   );
-  if (database) await registerMvp(app, database, mvpProvider, photoStorage);
+  if (database) {
+    await registerMvp(app, database, mvpProvider, photoStorage);
+    // Veyra is opt-in so existing SoulNest servers keep their startup settings.
+    if (veyraOptions || process.env.VEYRA_ENABLED === "true")
+      await registerVeyra(app, database, veyraOptions);
+  }
   return app;
 }

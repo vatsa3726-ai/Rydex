@@ -10,3 +10,6 @@ coverage/
 *.tsbuildinfo
 
 .soulnest-data/
+
+.veyra-data/
+!.env.veyra.example
