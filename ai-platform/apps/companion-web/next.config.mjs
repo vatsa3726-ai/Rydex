@@ -27,6 +27,10 @@ export default {
   async rewrites() {
     return [
       {
+        source: "/v2/soulnest/:path*",
+        destination: `${apiOrigin}/v2/soulnest/:path*`,
+      },
+      {
         source: "/api/soulnest/:path*",
         destination: `${apiOrigin}/v2/soulnest/:path*`,
       },

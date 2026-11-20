@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { Database } from "./database.js";
 import { registerMvp } from "./mvp.js";
 import type { PhotoStorage } from "./photo-storage.js";
+import type { SoulNestOptions } from "./account-security.js";
 import { registerVeyra, type VeyraOptions } from "./veyra.js";
 import {
   boundaries,
@@ -25,8 +26,25 @@ export async function buildApp(
   mvpProvider?: CompanionProvider,
   photoStorage?: PhotoStorage,
   veyraOptions?: VeyraOptions,
+  soulNestOptions?: SoulNestOptions,
 ) {
-  const app = Fastify({ logger: false, bodyLimit: 8_000_000 });
+  const hops = soulNestOptions?.trustProxyHops ?? 0;
+  if (!Number.isInteger(hops) || hops < 0 || hops > 10)
+    throw Error("Configure a verified proxy hop count between 0 and 10");
+  const app = Fastify({
+    logger: soulNestOptions?.logging
+      ? {
+          level: "info",
+          redact: [
+            "req.headers.authorization",
+            "req.headers.cookie",
+            'res.headers["set-cookie"]',
+          ],
+        }
+      : false,
+    trustProxy: (_address, hop) => hop < hops,
+    bodyLimit: 8_000_000,
+  });
   const sessions = new Map<string, Session>();
   const allowed = (process.env.CORS_ORIGINS ?? "")
     .split(",")
@@ -222,7 +240,13 @@ export async function buildApp(
     reply.code(404).send({ error: "Not found" }),
   );
   if (database) {
-    await registerMvp(app, database, mvpProvider, photoStorage);
+    await registerMvp(
+      app,
+      database,
+      mvpProvider,
+      photoStorage,
+      soulNestOptions,
+    );
     // Veyra is opt-in so existing SoulNest servers keep their startup settings.
     if (veyraOptions || process.env.VEYRA_ENABLED === "true")
       await registerVeyra(app, database, veyraOptions);

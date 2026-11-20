@@ -15,7 +15,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     name: localPreview ? "SoulNest Preview" : "SoulNest",
     slug: "soulnest",
     platforms: ["android", "ios"],
-    version: "0.2.0",
+    version: "0.3.0",
     orientation: "portrait",
     scheme: "soulnest",
     userInterfaceStyle: "light",
@@ -24,11 +24,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       bundleIdentifier:
         "com.hpsvinfratech.soulnest" + (localPreview ? ".preview" : ""),
       supportsTablet: true,
+      buildNumber: "2",
       config: { usesNonExemptEncryption: false },
     },
     android: {
       package: "com.hpsvinfratech.soulnest" + (localPreview ? ".preview" : ""),
       allowBackup: false,
+      versionCode: 2,
       adaptiveIcon: {
         foregroundImage: "./assets/icon.png",
         backgroundColor: "#F7F5EE",
@@ -63,6 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
       "expo-notifications",
+      "expo-sharing",
       [
         "expo-build-properties",
         {

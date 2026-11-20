@@ -3,17 +3,19 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createDatabase, migrate } from "./database.js";
+import { createDatabase, migrate, type Database } from "./database.js";
 test("local PostgreSQL records survive restart", async () => {
   const folder = await mkdtemp(path.join(tmpdir(), "soulnest-db-test-"));
-  let db = await createDatabase(undefined, folder);
+  let db: Database | undefined;
   try {
+    db = await createDatabase(undefined, folder);
     await migrate(db);
     await db.query(
       "INSERT INTO sn_users(id,email,name,password_hash) VALUES ($1,$2,$3,$4)",
       ["test", "persist@example.test", "Persist", "not-a-real-password"],
     );
     await db.close();
+    db = undefined;
     db = await createDatabase(undefined, folder);
     assert.equal(
       (await db.query("SELECT name FROM sn_users WHERE id=$1", ["test"]))
@@ -21,11 +23,14 @@ test("local PostgreSQL records survive restart", async () => {
       "Persist",
     );
   } finally {
-    await db.close();
-    if (
-      path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep) &&
-      path.basename(folder).startsWith("soulnest-db-test-")
-    )
-      await rm(folder, { recursive: true, force: true });
+    try {
+      await db?.close();
+    } finally {
+      if (
+        path.resolve(folder).startsWith(path.resolve(tmpdir()) + path.sep) &&
+        path.basename(folder).startsWith("soulnest-db-test-")
+      )
+        await rm(folder, { recursive: true, force: true });
+    }
   }
 });

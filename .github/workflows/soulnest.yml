@@ -34,6 +34,8 @@ jobs:
           EXPO_PUBLIC_API_URL: https://api.example.com/v2/soulnest
           EXPO_NO_TELEMETRY: "1"
       - run: npm run build -w @aiplatform/companion-web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser -w @aiplatform/companion-web
       - run: npm run build -w @aiplatform/models-web
       - run: npm audit --omit=dev
 

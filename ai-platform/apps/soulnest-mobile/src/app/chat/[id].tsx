@@ -10,6 +10,7 @@ import {
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Crypto from "expo-crypto";
+import { ReportReply } from "../../components/ReportReply";
 import { api } from "../../lib/api";
 import { type Companion, type Message } from "../../lib/domain";
 import {
@@ -27,7 +28,8 @@ function Conversation() {
     [messages, setMessages] = useState<Message[]>([]),
     [draft, setDraft] = useState(""),
     [more, setMore] = useState(false),
-    [mode, setMode] = useState("preview");
+    [mode, setMode] = useState("preview"),
+    [report, setReport] = useState<string | null>(null);
   const pending = useRef<{ id: string; text: string } | null>(null),
     list = useRef<FlatList<Message>>(null);
   const task = useTask();
@@ -182,6 +184,14 @@ function Conversation() {
               >
                 {item.content}
               </Text>
+              {item.role === "assistant" && (
+                <Button
+                  outline
+                  title="Report reply"
+                  disabled={task.busy}
+                  onPress={() => setReport(String(item.id))}
+                />
+              )}
             </View>
           )}
         />
@@ -193,6 +203,14 @@ function Conversation() {
             borderColor: colors.line,
           }}
         >
+          {report && (
+            <ReportReply
+              key={report}
+              companionId={id}
+              messageId={report}
+              onClose={() => setReport(null)}
+            />
+          )}
           <ErrorText error={task.error} />
           {task.busy && <Body small>One moment…</Body>}
           <TextInput

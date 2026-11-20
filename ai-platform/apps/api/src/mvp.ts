@@ -5,6 +5,16 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { migrate, type Database } from "./database.js";
 import {
+  migrateAccountSecurity,
+  activePlan,
+  type PlanName,
+} from "./account-data.js";
+import {
+  registerAccountSecurity,
+  type SoulNestOptions,
+} from "./account-security.js";
+import { configuredAccountMailer } from "./account-mail.js";
+import {
   hashToken,
   newSession,
   passwordHash,
@@ -12,6 +22,7 @@ import {
   requestToken,
 } from "./auth.js";
 import { profileSchema, relationships } from "./profiles.js";
+import { registerReports } from "./report-routes.js";
 import { registerChat } from "./chat-routes.js";
 import { registerPrivacy } from "./privacy-routes.js";
 import { registerVoice, voiceReady } from "./voice-routes.js";
@@ -27,6 +38,7 @@ export class HttpError extends Error {
   constructor(
     public statusCode: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -34,20 +46,20 @@ export class HttpError extends Error {
 export const plans = {
   free: {
     name: "Free",
-    companions: 3,
+    companions: Number(process.env.FREE_COMPANIONS ?? 3),
     dailyMessages: Number(process.env.FREE_DAILY_MESSAGES ?? 30),
     dailyVoice: Number(process.env.FREE_DAILY_VOICE ?? 5),
   },
   premium: {
-    name: "Premium — coming soon",
-    companions: 10,
-    dailyMessages: 300,
-    dailyVoice: 50,
+    name: "Premium",
+    companions: Number(process.env.PREMIUM_COMPANIONS ?? 10),
+    dailyMessages: Number(process.env.PREMIUM_DAILY_MESSAGES ?? 300),
+    dailyVoice: Number(process.env.PREMIUM_DAILY_VOICE ?? 50),
   },
 };
 for (const plan of Object.values(plans)) {
   if (
-    ![plan.dailyMessages, plan.dailyVoice].every(
+    ![plan.companions, plan.dailyMessages, plan.dailyVoice].every(
       (value) => Number.isInteger(value) && value > 0 && value <= 10000,
     )
   )
@@ -56,6 +68,8 @@ for (const plan of Object.values(plans)) {
 export interface MvpContext {
   db: Database;
   user(req: FastifyRequest): string;
+  plan(userId: string): Promise<PlanName>;
+  limits(userId: string): Promise<typeof plans.free>;
   owned(req: FastifyRequest, id: string): Promise<any>;
   reserve(userId: string, kind: string, limit: number): Promise<void>;
   photoStorage?: PhotoStorage;
@@ -65,14 +79,20 @@ export async function registerMvp(
   db: Database,
   provider?: CompanionProvider,
   photoStorage: PhotoStorage | undefined = configuredPhotoStorage(),
+  options: SoulNestOptions = {},
 ) {
   await migrate(db);
+  await migrateAccountSecurity(db);
   let draining = false;
   const cleanup = async () => {
     if (draining) return;
     draining = true;
     try {
       await drainPhotoDeletions(db, photoStorage);
+      await db.query("DELETE FROM sn_account_tokens WHERE expires_at<NOW()");
+      await db.query("DELETE FROM sn_email_limits WHERE hour<$1", [
+        new Date(Date.now() - 7200000).toISOString().slice(0, 13),
+      ]);
     } catch {
     } finally {
       draining = false;
@@ -87,8 +107,12 @@ export async function registerMvp(
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   const users = new WeakMap<FastifyRequest, string>();
-  const production = process.env.NODE_ENV === "production";
+  const production =
+    options.production ?? process.env.NODE_ENV === "production";
+  const mailer = options.mailer ?? configuredAccountMailer();
+  const emailRequired = options.requireVerifiedEmail ?? production;
   const origin =
+    options.origin ??
     process.env.PUBLIC_ORIGIN ??
     process.env.RENDER_EXTERNAL_URL ??
     "http://localhost:3000";
@@ -105,6 +129,8 @@ export async function registerMvp(
     db,
     photoStorage,
     user: (req) => users.get(req)!,
+    plan: (id) => activePlan(db, id),
+    limits: async (id) => plans[await activePlan(db, id)],
     async owned(req, id) {
       if (!z.string().uuid().safeParse(id).success)
         throw new HttpError(404, "Companion not found.");
@@ -153,6 +179,9 @@ export async function registerMvp(
             status >= 400 && status < 500
               ? (error as Error).message
               : "The service is unavailable. Please try again.",
+          ...(error instanceof HttpError && error.code
+            ? { code: error.code }
+            : {}),
         });
       });
       routes.addHook("onRequest", async (req, reply) => {
@@ -161,6 +190,14 @@ export async function registerMvp(
           .header("X-Content-Type-Options", "nosniff")
           .header("Referrer-Policy", "no-referrer");
         if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+          const accountAction = [
+            "request-verification",
+            "forgot-password",
+            "verify-email",
+            "reset-password",
+          ].some(
+            (action) => req.url.split("?")[0] === `/v2/soulnest/auth/${action}`,
+          );
           const nativeEntry = req.url
             .split("?")[0]
             .startsWith("/v2/soulnest/auth/native/");
@@ -177,7 +214,7 @@ export async function registerMvp(
             !(!production && req.headers.origin === "http://127.0.0.1:3000") &&
             !(
               req.headers.origin === undefined &&
-              (nativeEntry || explicitBearer)
+              (nativeEntry || explicitBearer || accountAction)
             )
           )
             throw new HttpError(403, "Request origin is not allowed.");
@@ -187,22 +224,49 @@ export async function registerMvp(
         const publicPaths = [
           "/v2/soulnest/config",
           "/v2/soulnest/health",
+          "/v2/soulnest/readiness",
           "/v2/soulnest/auth/login",
           "/v2/soulnest/auth/register",
           "/v2/soulnest/auth/native/register",
           "/v2/soulnest/auth/native/login",
+          ...[
+            "request-verification",
+            "forgot-password",
+            "verify-email",
+            "reset-password",
+          ].map((p) => "/v2/soulnest/auth/" + p),
         ];
         if (publicPaths.includes(req.url.split("?")[0])) return;
         const token = requestToken(req);
         const result = token
           ? await db.query(
-              "SELECT user_id FROM sn_sessions WHERE token_hash=$1 AND expires_at>NOW()",
+              "SELECT s.user_id,u.email_verified_at FROM sn_sessions s JOIN sn_users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>NOW()",
               [hashToken(token)],
             )
           : { rows: [] };
         if (!result.rows[0])
           throw new HttpError(401, "Please sign in to continue.");
         users.set(req, result.rows[0].user_id);
+        const privacyPaths = [
+          "/account",
+          "/account/password",
+          "/export",
+          "/auth/logout",
+          "/auth/logout-all",
+          "/reports",
+        ];
+        if (
+          emailRequired &&
+          !result.rows[0].email_verified_at &&
+          !privacyPaths.some(
+            (p) => req.url.split("?")[0] === "/v2/soulnest" + p,
+          )
+        )
+          throw new HttpError(
+            403,
+            "Verify your email to use companions and conversations.",
+            "EMAIL_REQUIRED",
+          );
       });
       routes.get("/config", async () => ({
         relationships,
@@ -210,10 +274,42 @@ export async function registerMvp(
         paymentsEnabled: false,
         provider: process.env.AI_PROVIDER === "openai" ? "openai" : "preview",
         voiceEnabled: voiceReady(),
+        emailEnabled: Boolean(mailer),
+        emailVerificationRequired: emailRequired,
+        supportEmail: z
+          .string()
+          .email()
+          .safeParse(process.env.SOULNEST_SUPPORT_EMAIL).success
+          ? process.env.SOULNEST_SUPPORT_EMAIL
+          : null,
       }));
       routes.get("/health", async () => {
         await db.query("SELECT 1");
         return { status: "ok" };
+      });
+      routes.get("/readiness", async () => {
+        await db.query("SELECT 1");
+        const configuration = {
+          emailDelivery: Boolean(mailer),
+          chat:
+            process.env.AI_PROVIDER === "openai" &&
+            Boolean(
+              process.env.AI_PROVIDER_API_KEY && process.env.AI_CHAT_MODEL,
+            ),
+          voice: voiceReady(),
+          privatePhotos: Boolean(photoStorage),
+        };
+        return {
+          status: Object.values(configuration).every(Boolean)
+            ? "configured"
+            : "configuration-required",
+          database: "available",
+          configuration,
+          emailVerificationRequired: emailRequired,
+          paymentsEnabled: false,
+          notice:
+            "Configuration status does not verify live providers, legal approval or store publication.",
+        };
       });
       const credentials = z.object({
         email: z
@@ -251,7 +347,13 @@ export async function registerMvp(
         const native = req.url.split("?")[0].includes("/auth/native/");
         if (!native) reply.setCookie("sn_session", token, cookies);
         return {
-          user: { id, name: input.name, email: input.email },
+          user: {
+            id,
+            name: input.name,
+            email: input.email,
+            email_verified_at: null,
+            verification_required: emailRequired,
+          },
           ...(native ? { token, expiresIn: 7 * 86400 } : {}),
         };
       };
@@ -264,7 +366,7 @@ export async function registerMvp(
       const loginHandler = async (req: FastifyRequest, reply: FastifyReply) => {
         const input = credentials.strict().parse(req.body);
         const result = await db.query(
-          "SELECT id,email,name,password_hash FROM sn_users WHERE email=$1",
+          "SELECT id,email,name,password_hash,email_verified_at FROM sn_users WHERE email=$1",
           [input.email],
         );
         const u = result.rows[0];
@@ -278,7 +380,13 @@ export async function registerMvp(
         const token = await newSession(db, u.id);
         if (!native) reply.setCookie("sn_session", token, cookies);
         return {
-          user: { id: u.id, name: u.name, email: u.email },
+          user: {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            email_verified_at: u.email_verified_at,
+            verification_required: emailRequired,
+          },
           ...(native ? { token, expiresIn: 7 * 86400 } : {}),
         };
       };
@@ -295,13 +403,23 @@ export async function registerMvp(
         reply.clearCookie("sn_session", cookies);
         return { ok: true };
       });
+      await registerAccountSecurity(routes, context, { origin, mailer });
       routes.get("/account", async (req) => ({
         user: (
-          await db.query("SELECT id,name,email FROM sn_users WHERE id=$1", [
-            context.user(req),
-          ])
+          await db.query(
+            "SELECT id,name,email,email_verified_at FROM sn_users WHERE id=$1",
+            [context.user(req)],
+          )
         ).rows[0],
-        plan: "free",
+        emailVerificationRequired: emailRequired,
+        plan: await context.plan(context.user(req)),
+        limits: await context.limits(context.user(req)),
+        subscription: (
+          await db.query(
+            "SELECT plan,status,active_until FROM sn_subscriptions WHERE user_id=$1",
+            [context.user(req)],
+          )
+        ).rows[0],
         usage: (
           await db.query(
             "SELECT day,kind,count FROM sn_usage WHERE user_id=$1 AND day=$2",
@@ -320,27 +438,43 @@ export async function registerMvp(
         ]);
         return { name };
       });
-      routes.delete("/account", async (req, reply) => {
-        const { password } = z
-          .object({ password: z.string().max(128) })
-          .parse(req.body);
-        const u = (
-          await db.query("SELECT password_hash FROM sn_users WHERE id=$1", [
-            context.user(req),
-          ])
-        ).rows[0];
-        if (!u || !(await passwordMatches(password, u.password_hash)))
-          throw new HttpError(401, "Password is incorrect.");
-        await db.transaction(async (tx) => {
-          await queuePhotoDeletion(tx, { userId: context.user(req) });
-          await tx.query("DELETE FROM sn_users WHERE id=$1", [
-            context.user(req),
-          ]);
-        });
-        await cleanup();
-        reply.clearCookie("sn_session", cookies);
-        return { deleted: true };
-      });
+      routes.delete(
+        "/account",
+        {
+          config: {
+            rateLimit: {
+              max: 5,
+              timeWindow: "15 minutes",
+              keyGenerator: (req) => context.user(req) ?? req.ip,
+            },
+          },
+        },
+        async (req, reply) => {
+          const { password } = z
+            .object({ password: z.string().max(128) })
+            .parse(req.body);
+          const u = (
+            await db.query("SELECT password_hash FROM sn_users WHERE id=$1", [
+              context.user(req),
+            ])
+          ).rows[0];
+          if (!u || !(await passwordMatches(password, u.password_hash)))
+            throw new HttpError(403, "Password is incorrect.");
+          await db.transaction(async (tx) => {
+            await queuePhotoDeletion(tx, { userId: context.user(req) });
+            await tx.query(
+              "DELETE FROM sn_operator_audit WHERE target_id=$1 OR target_id IN (SELECT id FROM sn_reports WHERE user_id=$1)",
+              [context.user(req)],
+            );
+            await tx.query("DELETE FROM sn_users WHERE id=$1", [
+              context.user(req),
+            ]);
+          });
+          await cleanup();
+          reply.clearCookie("sn_session", cookies);
+          return { deleted: true };
+        },
+      );
       routes.get("/companions", async (req) => ({
         companions: (
           await db.query(
@@ -364,10 +498,11 @@ export async function registerMvp(
             "SELECT COUNT(*) AS count FROM sn_companions WHERE user_id=$1",
             [context.user(req)],
           );
-          if (Number(count.rows[0].count) >= plans.free.companions)
+          const limits = plans[await activePlan(tx, context.user(req))];
+          if (Number(count.rows[0].count) >= limits.companions)
             throw new HttpError(
               409,
-              "The free plan supports three companions.",
+              `Your current plan supports ${limits.companions} companions.`,
             );
           await tx.query(
             "INSERT INTO sn_companions(id,user_id,name,relationship,personality,tone,language,instructions,interests,phrases,custom_label) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
@@ -426,6 +561,7 @@ export async function registerMvp(
       );
       await registerChat(routes, context, provider);
       await registerPrivacy(routes, context);
+      await registerReports(routes, context);
       await registerVoice(routes, context);
     },
     { prefix: "/v2/soulnest" },

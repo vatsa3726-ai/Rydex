@@ -13,3 +13,5 @@ coverage/
 
 .veyra-data/
 !.env.veyra.example
+
+test-results/

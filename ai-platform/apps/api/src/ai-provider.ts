@@ -28,10 +28,12 @@ export class OpenAIProvider implements CompanionProvider {
       "moderations",
       {
         model: process.env.AI_MODERATION_MODEL ?? "omni-moderation-latest",
-        input: input.messages
-          .filter((m) => m.role === "user")
-          .map((m) => m.content)
-          .join("\n"),
+        input: [
+          ...input.messages
+            .filter((m) => m.role === "user")
+            .map((m) => m.content),
+          ...input.memories,
+        ].join("\n"),
       },
       signal,
     );

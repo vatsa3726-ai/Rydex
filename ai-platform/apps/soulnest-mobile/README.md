@@ -1,5 +1,7 @@
 # SoulNest — Android/iOS native MVP
 
+Current release: **0.3.0**. See [the release completion report](../../docs/soulnest-release-0.3.md) for new features, exact verification and remaining external setup.
+
 SoulNest is now mobile-first. This is an actual React Native + Expo SDK 58 + TypeScript app using Expo Router, not a WebView wrapper. HPSV Infra Tech LLP is the parent company. The existing website is a secondary compatible client; Veyra and legacy Rydex source remain unchanged.
 
 ## Implemented
@@ -12,9 +14,11 @@ SoulNest is now mobile-first. This is an actual React Native + Expo SDK 58 + Typ
 - Explicit long-term memory opt-in, view/edit/forget, withdrawal and companion/account deletion.
 - Turn-based AI voice screen: microphone permission, capped recording, speech transcription, transcript review, synthetic voice selection, spoken replies and playback cancellation. Capture/playback stop on background/unmount. It is not a full-duplex telephone call; no voice cloning is exposed.
 - Optional generic local daily reminder, enabled only by user choice. No private companion/message text appears in the notification. Remote push is not implemented.
-- Configurable free plan display and premium placeholder. No purchases or payment collection.
+- Configurable free/premium limits with expiring operator-assigned evaluation access. No purchases or payment collection.
+- Email verification/recovery, password changes, sign-out on every device, private report submissions, and export through the native share sheet.
+- A connection screen in local-preview builds for a trusted LAN or HTTPS backend. Server changes clear the device session; store builds have a fixed HTTPS endpoint.
 
-Every companion is clearly disclosed as fictional AI. Family/mentor/custom styles remain platonic and all styles remain non-explicit. A name or photo never makes the simulation the actual person. This is a private MVP: email verification, password recovery, verified age assurance and live safety/device/language evaluations remain release work.
+Every companion is clearly disclosed as fictional AI. Family/mentor/custom styles remain platonic and all styles remain non-explicit. A name or photo never makes the simulation the actual person. Email verification and password recovery are implemented and require configured delivery. This remains a private MVP until live providers, age-assurance/launch requirements and safety/device/language evaluations are verified.
 
 ## Local development
 
@@ -85,7 +89,7 @@ Expo CLI reports `Not logged in`, so no EAS cloud build, project linking, signed
 
 Official references: https://docs.expo.dev/router/installation/ ; https://docs.expo.dev/versions/latest/sdk/securestore/ ; https://docs.expo.dev/versions/latest/sdk/audio/ ; https://docs.expo.dev/build-reference/apk/ ; https://docs.expo.dev/build/setup/
 
-The Render configuration now starts the shared API directly, with /v2/soulnest/health as its health check. Use its HTTPS origin plus /v2/soulnest as EXPO_PUBLIC_API_URL. The browser client can be deployed separately if needed; no services are deployed by these files.
+The Render configuration builds and starts the website plus loopback API, with /api/soulnest/health as its health check. Both /api/soulnest and the compatible /v2/soulnest paths proxy to the same backend. Use its HTTPS origin plus /v2/soulnest as EXPO_PUBLIC_API_URL. The browser client can be deployed separately if needed; no services are deployed by these files.
 
 GitHub Actions can also compile and signature-check a LOCAL PREVIEW APK without EAS credentials. A push whose commit message includes [apk] requests that build. Workflow Dispatch is available after the workflow is on the repository default branch. The uploaded artifact is named soulnest-android-local-preview. Ordinary pushes still validate both native bundles, tests and browser regressions; they do not repeatedly build APKs.
 

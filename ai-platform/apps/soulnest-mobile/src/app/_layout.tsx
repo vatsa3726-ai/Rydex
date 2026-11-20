@@ -37,6 +37,14 @@ export default function Layout() {
           name="companion/[id]"
           options={{ title: "Companion & memory" }}
         />
+        <Stack.Screen
+          name="account-security"
+          options={{ title: "Account security" }}
+        />
+        <Stack.Screen
+          name="connection"
+          options={{ title: "Preview connection" }}
+        />
         <Stack.Screen name="privacy" options={{ title: "Your privacy" }} />
       </Stack>
     </AuthProvider>

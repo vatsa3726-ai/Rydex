@@ -1,7 +1,8 @@
 import { useCallback, useState } from "react";
 import { Alert, Linking, Text } from "react-native";
 import { router, useFocusEffect } from "expo-router";
-import { api, apiBase, clearToken } from "../../lib/api";
+import { SecurityTools } from "../../components/SecurityTools";
+import { api, previewConnectionEnabled } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import {
   disableReminder,
@@ -29,17 +30,22 @@ export default function Settings() {
     [name, setName] = useState(auth.user?.name ?? ""),
     [password, setPassword] = useState(""),
     [confirm, setConfirm] = useState(false),
-    [reminder, setReminder] = useState(false);
+    [reminder, setReminder] = useState(false),
+    [plan, setPlan] = useState<"free" | "premium">("free");
   useFocusEffect(
     useCallback(() => {
       void Promise.all([
         api<Configuration>("config"),
-        api<{ usage: { kind: string; count: number }[] }>("account"),
+        api<{
+          usage: { kind: string; count: number }[];
+          plan: "free" | "premium";
+        }>("account"),
         reminderEnabled(),
       ])
         .then(([c, a, r]) => {
           setConfig(c);
           setUsage(a.usage);
+          setPlan(a.plan);
           setReminder(r);
         })
         .catch((e) => task.setError(e.message));
@@ -70,10 +76,14 @@ export default function Settings() {
         />
       </Card>
       <Card>
-        <Text style={ui.h2}>Free, with room to begin</Text>
+        <Text style={ui.h2}>
+          {plan === "premium"
+            ? "Premium evaluation access"
+            : "Free, with room to begin"}
+        </Text>
         <Body>
           {config
-            ? `${config.plans.free.companions} companions · ${config.plans.free.dailyMessages} chat requests · ${config.plans.free.dailyVoice} voice requests per UTC day.`
+            ? `${config.plans[plan].companions} companions · ${config.plans[plan].dailyMessages} chat requests · ${config.plans[plan].dailyVoice} voice requests per UTC day.`
             : "Loading plan…"}
         </Body>
         <Body small>
@@ -81,11 +91,11 @@ export default function Settings() {
           {usage.find((u) => u.kind === "voice")?.count ?? 0} voice requests.
           Failed provider requests and retries count toward limits.
         </Body>
-        <Text style={ui.h2}>Premium · Coming soon</Text>
+        <Text style={ui.h2}>Premium access</Text>
         <Body small>
-          Additional companions and higher limits are prepared. Pricing and
-          app-store billing are not approved or enabled. No payments are
-          collected.
+          Additional companions and higher limits can be assigned by an
+          authorized operator for evaluation. Pricing and app-store billing are
+          not approved or enabled. No payments are collected.
         </Body>
       </Card>
       <Card>
@@ -113,6 +123,14 @@ export default function Settings() {
           onPress={() => void Linking.openSettings()}
         />
       </Card>
+      {previewConnectionEnabled() && (
+        <Button
+          outline
+          title="Preview connection settings"
+          onPress={() => router.push("/connection")}
+        />
+      )}
+      <SecurityTools />
       <Button
         title="Privacy & companion terms"
         outline
@@ -182,7 +200,7 @@ export default function Settings() {
           : "Preview replies only. Live AI and speech credentials are not configured."}
       </Body>
       <Body small>
-        HPSV Infra Tech LLP · SoulNest 0.2 ·{" "}
+        HPSV Infra Tech LLP · SoulNest 0.3 ·{" "}
         {process.env.EXPO_PUBLIC_LOCAL_PREVIEW === "1"
           ? "LOCAL PREVIEW — requires the local API"
           : "Private MVP"}

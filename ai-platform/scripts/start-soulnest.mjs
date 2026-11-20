@@ -48,7 +48,7 @@ try {
         "-H",
         "0.0.0.0",
       ],
-      {NODE_ENV:'production'},
+      { NODE_ENV: "production" },
     );
 } catch {
   console.error("SoulNest could not start. Check database configuration.");
