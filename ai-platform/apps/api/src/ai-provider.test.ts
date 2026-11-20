@@ -24,6 +24,7 @@ test("configured AI provider moderates input and output and sends bounded contex
     });
     assert.equal(result, "A warm reply");
     assert.equal(requests.length, 3);
+    assert.match(requests[0].body.input, /Short replies/);
     assert.equal(requests[1].body.store, false);
     assert.equal(requests[1].body.messages[0].role, "system");
     assert.equal(requests[1].body.max_completion_tokens, 500);

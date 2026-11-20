@@ -13,7 +13,8 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "veyra:start": "node scripts/start-veyra.mjs",
-    "veyra:dev": "node scripts/start-veyra.mjs --dev"
+    "veyra:dev": "node scripts/start-veyra.mjs --dev",
+    "soulnest:start": "node scripts/start-soulnest.mjs"
   },
   "engines": {
     "node": ">=20"

@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CompanionForm } from "./components/CompanionForm";
+import { AccountSecurity, PasswordTools } from "./components/AccountSecurity";
 import { Chat } from "./components/Chat";
 export type Companion = {
   id: string;
@@ -18,44 +19,109 @@ export type Companion = {
   memory_enabled: boolean;
   has_photo: boolean;
 };
+let sessionEpoch = 0;
 export async function api(path: string, method = "GET", body?: unknown) {
+  const epoch = sessionEpoch;
   const response = await fetch(`/api/soulnest/${path}`, {
     method,
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(45000),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  const data = await response.json();
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    throw Error("SoulNest could not connect. Please try again.");
+  }
+  if (
+    response.ok &&
+    [
+      "auth/login",
+      "auth/register",
+      "auth/logout",
+      "auth/logout-all",
+      "auth/reset-password",
+      "account/password",
+    ].includes(path)
+  )
+    sessionEpoch++;
+  if (
+    typeof window !== "undefined" &&
+    response.status === 401 &&
+    epoch === sessionEpoch &&
+    path !== "account" &&
+    !path.startsWith("auth/")
+  )
+    window.dispatchEvent(new Event("soulnest:expired"));
   if (!response.ok) throw new Error(data.error ?? "Please try again.");
   return data;
 }
 export default function Home() {
   const path = usePathname(),
     router = useRouter();
-  const [user, setUser] = useState<{ name: string; email: string } | null>(
-      null,
-    ),
+  const [user, setUser] = useState<{
+      name: string;
+      email: string;
+      email_verified_at?: string | null;
+      verification_required?: boolean;
+    } | null>(null),
     [companions, setCompanions] = useState<Companion[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const refreshVersion = useRef(0);
+  function clearUser() {
+    refreshVersion.current++;
+    setUser(null);
+    setCompanions([]);
+    setLoading(false);
+  }
   async function refresh() {
+    const version = ++refreshVersion.current;
     setLoading(true);
     try {
       const d = await api("account");
-      setUser(d.user);
-      const c = await api("companions");
-      setCompanions(c.companions);
+      if (version !== refreshVersion.current) return;
+      setUser({
+        ...d.user,
+        verification_required: d.emailVerificationRequired,
+      });
+      if (!d.emailVerificationRequired || d.user.email_verified_at) {
+        try {
+          const c = await api("companions");
+          if (version !== refreshVersion.current) return;
+          setCompanions(c.companions);
+        } catch (e) {
+          if (version !== refreshVersion.current) return;
+          setCompanions([]);
+          setError((e as Error).message);
+        }
+      } else setCompanions([]);
     } catch {
-      setUser(null);
+      if (version === refreshVersion.current) {
+        setUser(null);
+        setCompanions([]);
+      }
     } finally {
-      setLoading(false);
+      if (version === refreshVersion.current) setLoading(false);
     }
   }
   useEffect(() => {
     void refresh();
   }, [path]);
+  const lock = useRef(false);
+  useEffect(() => {
+    const expired = () => {
+      clearUser();
+    };
+    window.addEventListener("soulnest:expired", expired);
+    return () => window.removeEventListener("soulnest:expired", expired);
+  }, []);
   async function action(work: () => Promise<void>) {
+    if (lock.current) return;
+    lock.current = true;
     setError("");
     setBusy(true);
     try {
@@ -64,6 +130,7 @@ export default function Home() {
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      lock.current = false;
     }
   }
   const signup = path === "/signup";
@@ -85,7 +152,7 @@ export default function Home() {
                 onClick={() =>
                   action(async () => {
                     await api("auth/logout", "POST", {});
-                    setUser(null);
+                    clearUser();
                     router.push("/");
                   })
                 }
@@ -253,11 +320,12 @@ export default function Home() {
                 : "New here? Create an account"}
             </Link>
           </p>
-          <small>
-            Email verification and password recovery are not connected in this
-            private MVP. Save your password securely.
-          </small>
+          <Link href="/account-security#purpose=reset">
+            Forgot password or verify email
+          </Link>
         </section>
+      ) : path === "/account-security" ? (
+        <AccountSecurity email={user?.email} onVerified={refresh} />
       ) : path === "/privacy" ? (
         <section className="panel reading">
           <h1>Your space, your choices.</h1>
@@ -288,6 +356,15 @@ export default function Home() {
             their own retention policies. Deleting a saved note does not remove
             copies that you typed in chat history; use Clear conversation too.
           </p>
+          <h2>Account security and reports</h2>
+          <p>
+            Email verification and password recovery use expiring, one-time
+            tokens when delivery is configured. Resetting or changing your
+            password revokes every session. Reports share your chosen details; a
+            reply excerpt is included only with explicit permission. Exported
+            files contain private data. Public launch still requires independent
+            age-assurance and live safety evaluation.
+          </p>
           <h2>Photos and voices</h2>
           <p>
             Use only your own images or images you are authorized to use. An
@@ -309,6 +386,17 @@ export default function Home() {
           <Link className="button primary" href="/login">
             Sign in
           </Link>
+        </section>
+      ) : user.verification_required &&
+        !user.email_verified_at &&
+        path !== "/settings" ? (
+        <section className="panel empty">
+          <h1>Verify your email to continue.</h1>
+          <p>Your account privacy controls remain available.</p>
+          <Link href="/account-security" className="button primary">
+            Verify email
+          </Link>
+          <Link href="/settings">Account & privacy</Link>
         </section>
       ) : path === "/create" || editing ? (
         <CompanionForm
@@ -332,7 +420,7 @@ export default function Home() {
           busy={busy}
           action={action}
           onDeleted={() => {
-            setUser(null);
+            clearUser();
             router.push("/");
           }}
         />
@@ -441,10 +529,12 @@ function AccountSettings({
     dailyVoice: number;
   } | null>(null);
   const [usage, setUsage] = useState<{ kind: string; count: number }[]>([]);
+  const [plan, setPlan] = useState("free");
   useEffect(() => {
     void Promise.all([api("config"), api("account")])
       .then(([config, account]) => {
-        setLimits(config.plans.free);
+        setLimits(account.limits ?? config.plans[account.plan]);
+        setPlan(account.plan);
         setUsage(account.usage);
       })
       .catch(() => {});
@@ -456,7 +546,11 @@ function AccountSettings({
       <p>
         {user.name} · {user.email}
       </p>
-      <h2>Free, with room to begin</h2>
+      <h2>
+        {plan === "premium"
+          ? "Premium evaluation access"
+          : "Free, with room to begin"}
+      </h2>
       <p>
         {limits
           ? `${limits.companions} companions · ${limits.dailyMessages} chat requests per UTC day · ${limits.dailyVoice} voice requests per UTC day when configured.`
@@ -469,11 +563,14 @@ function AccountSettings({
         requests · {usage.find((u) => u.kind === "voice")?.count ?? 0} voice
         requests. Resets at midnight UTC.
       </p>
-      <h2>Premium · Coming soon</h2>
+      <h2>Premium access</h2>
       <p>
-        Planned: more companions, higher conversation limits, and more voice
-        time. Pricing has not been set. Payments are not enabled.
+        More companions and higher limits can be assigned by an authorized
+        operator for evaluation. Pricing has not been set. Payments are not
+        enabled.
       </p>
+      <hr />
+      <PasswordTools onSignedOut={onDeleted} />
       <hr />
       <h2>Take a copy of your data</h2>
       <button

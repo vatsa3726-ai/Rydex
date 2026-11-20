@@ -67,7 +67,11 @@ export async function registerChat(
         .strict()
         .parse(req.body);
       // Reserve before provider work, including failed attempts, to bound provider costs.
-      await ctx.reserve(ctx.user(req), "chat", plans.free.dailyMessages);
+      await ctx.reserve(
+        ctx.user(req),
+        "chat",
+        (await ctx.limits(ctx.user(req))).dailyMessages,
+      );
       return db.transaction(async (tx) => {
         const current = (
           await tx.query(

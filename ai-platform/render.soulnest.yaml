@@ -5,12 +5,12 @@ services:
     runtime: node
     rootDir: ai-platform
     region: oregon
-    plan: 0.5c-512mb
+    plan: 1c-2g
     numInstances: 1
     autoDeployTrigger: "off"
-    buildCommand: npm ci --include=dev && npm run typecheck -w @aiplatform/api
-    startCommand: npm start -w @aiplatform/api
-    healthCheckPath: /v2/soulnest/health
+    buildCommand: npm ci --include=dev && npm run typecheck -w @aiplatform/api && npm run build -w @aiplatform/companion-web
+    startCommand: npm run soulnest:start
+    healthCheckPath: /api/soulnest/health
     envVars:
       - key: NODE_VERSION
         value: "24.21.0"
@@ -22,6 +22,14 @@ services:
         fromDatabase:
           name: soulnest-mvp-db
           property: connectionString
+      - key: SOULNEST_API_ORIGIN
+        value: http://127.0.0.1:4000
+      - key: SOULNEST_EMAIL_PROVIDER
+        value: resend
+      - key: SOULNEST_EMAIL_API_KEY
+        sync: false
+      - key: SOULNEST_EMAIL_FROM
+        sync: false
       - key: AI_PROVIDER
         value: preview
       - key: FREE_DAILY_MESSAGES

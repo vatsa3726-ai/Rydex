@@ -1,4 +1,10 @@
-export type User = { id: string; name: string; email: string };
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  email_verified_at?: string | null;
+  verification_required?: boolean;
+};
 export type Companion = {
   id: string;
   name: string;
@@ -26,8 +32,11 @@ export type Configuration = {
   provider: "preview" | "openai";
   voiceEnabled: boolean;
   paymentsEnabled: false;
+  emailEnabled: boolean;
+  emailVerificationRequired: boolean;
   plans: {
     free: { companions: number; dailyMessages: number; dailyVoice: number };
+    premium: { companions: number; dailyMessages: number; dailyVoice: number };
   };
 };
 export const relationships = [

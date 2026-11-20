@@ -5,6 +5,7 @@ export const voiceReady = () =>
   Boolean(
     process.env.AI_PROVIDER === "openai" &&
     process.env.AI_PROVIDER_API_KEY &&
+    process.env.AI_CHAT_MODEL &&
     process.env.AI_STT_MODEL &&
     process.env.AI_TTS_MODEL,
   );
@@ -58,7 +59,11 @@ export async function registerVoice(routes: FastifyInstance, ctx: MvpContext) {
       const audio = Buffer.from(input.base64, "base64");
       if (audio.length > 5 * 1024 * 1024)
         throw new HttpError(413, "Keep your recording under 5 MB.");
-      await ctx.reserve(ctx.user(req), "voice", plans.free.dailyVoice);
+      await ctx.reserve(
+        ctx.user(req),
+        "voice",
+        (await ctx.limits(ctx.user(req))).dailyVoice,
+      );
       const form = new FormData();
       form.append(
         "file",
@@ -92,7 +97,11 @@ export async function registerVoice(routes: FastifyInstance, ctx: MvpContext) {
         )
       ).rows[0];
       if (!message) throw new HttpError(404, "Reply not found.");
-      await ctx.reserve(ctx.user(req), "voice", plans.free.dailyVoice);
+      await ctx.reserve(
+        ctx.user(req),
+        "voice",
+        (await ctx.limits(ctx.user(req))).dailyVoice,
+      );
       const audio = await speechRequest(
         "speech",
         JSON.stringify({

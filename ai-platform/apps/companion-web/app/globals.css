@@ -333,6 +333,7 @@ footer p {
 }
 .chat-layout {
   display: grid;
+  align-items: start;
   grid-template-columns: minmax(0, 1fr) 300px;
   gap: 22px;
   margin-top: 32px;

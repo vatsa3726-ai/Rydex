@@ -42,8 +42,12 @@ export default function Privacy() {
         generic text and no private message preview.
       </Body>
       <Body>
-        No payments are active. Email verification, recovery, verified age
-        assurance and live-model/device evaluations remain release work.
+        No payments are active. Email verification and recovery require
+        configured email delivery. This preview uses 18+ self-attestation;
+        independent age assurance and live-model/device evaluations remain
+        launch requirements. Reports share only your chosen details and an
+        optional reply excerpt. Account exports include private data and should
+        be saved to a private destination.
       </Body>
       <Body small>HPSV Infra Tech LLP · SoulNest</Body>
     </Screen>

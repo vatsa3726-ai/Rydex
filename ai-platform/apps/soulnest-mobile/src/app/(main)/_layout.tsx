@@ -1,11 +1,18 @@
-import { Tabs, Redirect } from "expo-router";
+import { Tabs, Redirect, useSegments } from "expo-router";
 import { Text } from "react-native";
 import { useAuth } from "../../lib/auth";
 import { Loading, colors } from "../../components/ui";
 export default function Main() {
   const { loading, user } = useAuth();
+  const segments = useSegments();
   if (loading) return <Loading />;
   if (!user) return <Redirect href="/sign-in" />;
+  if (
+    user.verification_required &&
+    !user.email_verified_at &&
+    segments.at(-1) !== "settings"
+  )
+    return <Redirect href="/account-security" />;
   return (
     <Tabs
       screenOptions={{

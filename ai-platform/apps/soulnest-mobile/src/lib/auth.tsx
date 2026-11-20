@@ -33,8 +33,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
   async function reload() {
-    const data = await api<{ user: User }>("account");
-    setUser(data.user);
+    const data = await api<{ user: User; emailVerificationRequired: boolean }>(
+      "account",
+    );
+    setUser({
+      ...data.user,
+      verification_required: data.emailVerificationRequired,
+    });
   }
   async function clearLocal() {
     try {

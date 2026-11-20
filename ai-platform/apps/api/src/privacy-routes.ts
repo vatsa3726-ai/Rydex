@@ -214,42 +214,63 @@ export async function registerPrivacy(
       return { deleted: true };
     },
   );
-  routes.get("/export", async (req) => {
-    const userId = ctx.user(req);
-    const user = (
-      await db.query(
-        "SELECT name,email,created_at,adult_confirmed_at FROM sn_users WHERE id=$1",
-        [userId],
-      )
-    ).rows[0];
-    const companions = (
-      await db.query("SELECT * FROM sn_companions WHERE user_id=$1", [userId])
-    ).rows;
-    for (const c of companions) {
-      c.messages = (
+  routes.get(
+    "/export",
+    { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } },
+    async (req) => {
+      const userId = ctx.user(req);
+      const user = (
         await db.query(
-          "SELECT role,content,created_at FROM sn_messages WHERE companion_id=$1 ORDER BY id",
-          [c.id],
-        )
-      ).rows;
-      c.memories = (
-        await db.query(
-          "SELECT text,created_at FROM sn_memories WHERE companion_id=$1",
-          [c.id],
-        )
-      ).rows;
-      const photo = (
-        await db.query(
-          "SELECT data,object_key,authorized_at FROM sn_photos WHERE companion_id=$1",
-          [c.id],
+        "SELECT name,email,created_at,adult_confirmed_at,email_verified_at FROM sn_users WHERE id=$1",
+          [userId],
         )
       ).rows[0];
-      if (photo)
-        c.photo = {
-          base64: (await readPhoto(photo, ctx.photoStorage)).toString("base64"),
-          authorized_at: photo.authorized_at,
-        };
-    }
-    return { user, companions };
-  });
+      const companions = (
+        await db.query("SELECT * FROM sn_companions WHERE user_id=$1", [userId])
+      ).rows;
+      for (const c of companions) {
+        c.messages = (
+          await db.query(
+            "SELECT role,content,created_at FROM sn_messages WHERE companion_id=$1 ORDER BY id",
+            [c.id],
+          )
+        ).rows;
+        c.memories = (
+          await db.query(
+            "SELECT text,created_at FROM sn_memories WHERE companion_id=$1",
+            [c.id],
+          )
+        ).rows;
+        const photo = (
+          await db.query(
+            "SELECT data,object_key,authorized_at FROM sn_photos WHERE companion_id=$1",
+            [c.id],
+          )
+        ).rows[0];
+        if (photo)
+          c.photo = {
+            base64: (await readPhoto(photo, ctx.photoStorage)).toString(
+              "base64",
+            ),
+            authorized_at: photo.authorized_at,
+          };
+      }
+      return {
+        user,
+        companions,
+        subscription: (
+          await db.query(
+            "SELECT plan,status,active_until FROM sn_subscriptions WHERE user_id=$1",
+            [userId],
+          )
+        ).rows[0],
+        reports: (
+          await db.query(
+            "SELECT id,category,details,excerpt,status,resolution,created_at FROM sn_reports WHERE user_id=$1",
+            [userId],
+          )
+        ).rows,
+      };
+    },
+  );
 }

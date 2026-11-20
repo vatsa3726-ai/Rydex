@@ -1,3 +1,4 @@
+import { previewConnectionEnabled } from "../lib/api";
 import { View, Text } from "react-native";
 import { Redirect, router } from "expo-router";
 import { useAuth } from "../lib/auth";
@@ -63,6 +64,13 @@ export default function Welcome() {
           outline
           onPress={() => router.push("/privacy")}
         />
+        {previewConnectionEnabled() && (
+          <Button
+            outline
+            title="Connect this preview to my server"
+            onPress={() => router.push("/connection")}
+          />
+        )}
         <Body small>HPSV Infra Tech LLP</Body>
       </View>
     </Screen>

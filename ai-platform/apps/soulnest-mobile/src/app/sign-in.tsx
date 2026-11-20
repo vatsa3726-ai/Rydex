@@ -1,3 +1,4 @@
+import { previewConnectionEnabled } from "../lib/api";
 import { useState } from "react";
 import { router, useLocalSearchParams, Redirect } from "expo-router";
 import { useAuth } from "../lib/auth";
@@ -23,7 +24,16 @@ export default function SignIn() {
   const auth = useAuth(),
     task = useTask();
   if (auth.loading) return <Loading />;
-  if (auth.user) return <Redirect href="/gallery" />;
+  if (auth.user)
+    return (
+      <Redirect
+        href={
+          auth.user.verification_required && !auth.user.email_verified_at
+            ? "/account-security"
+            : "/gallery"
+        }
+      />
+    );
   return (
     <Screen>
       <Title eyebrow="YOUR OWN LITTLE CORNER">
@@ -113,10 +123,23 @@ export default function SignIn() {
           task.setError("");
         }}
       />
-      <Body small>
-        Account recovery and email verification are not connected in this
-        private MVP. Keep your password secure.
-      </Body>
+      {previewConnectionEnabled() && (
+        <Button
+          outline
+          title="Preview connection settings"
+          onPress={() => router.push("/connection")}
+        />
+      )}
+      <Button
+        outline
+        title="Forgot password or verify email"
+        onPress={() =>
+          router.push({
+            pathname: "/account-security",
+            params: { mode: "reset" },
+          })
+        }
+      />
     </Screen>
   );
 }

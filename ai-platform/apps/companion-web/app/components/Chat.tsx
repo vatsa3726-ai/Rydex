@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { ReportReply } from "./ReportReply";
 import { Voice } from "./Voice";
 import { CompanionTools } from "./CompanionTools";
 import { api, type Companion } from "../SoulNest";
@@ -11,7 +12,8 @@ export function Chat({ companion }: { companion?: Companion }) {
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [more, setMore] = useState(false),
-    [mode, setMode] = useState("preview");
+    [mode, setMode] = useState("preview"),
+    [report, setReport] = useState<string | null>(null);
   const [hasPhoto, setHasPhoto] = useState(companion?.has_photo ?? false),
     [photoVersion, setPhotoVersion] = useState(0);
   const request = useRef<{ id: string; text: string } | null>(null);
@@ -98,7 +100,7 @@ export function Chat({ companion }: { companion?: Companion }) {
         </div>
         <p className="notice">
           {mode === "preview"
-          ? "Preview replies: no live AI is configured. Sample responses demonstrate the flow."
+            ? "Preview replies: no live AI is configured. Sample responses demonstrate the flow."
             : "AI-generated replies. Your messages and enabled memory notes are sent to the configured provider."}
         </p>
         <div
@@ -130,6 +132,11 @@ export function Chat({ companion }: { companion?: Companion }) {
             <div key={m.id} className={`bubble ${m.role}`}>
               <small>{m.role === "user" ? "You" : `${c.name} · AI`}</small>
               <p>{m.content}</p>
+              {m.role === "assistant" && (
+                <button disabled={busy} onClick={() => setReport(String(m.id))}>
+                  Report reply
+                </button>
+              )}
             </div>
           ))}
           {busy && <p role="status">One moment…</p>}
@@ -191,6 +198,14 @@ export function Chat({ companion }: { companion?: Companion }) {
             Clear conversation
           </button>
         </section>
+        {report && (
+          <ReportReply
+            key={report}
+            companionId={c.id}
+            messageId={report}
+            onClose={() => setReport(null)}
+          />
+        )}
         <Voice
           companionId={c.id}
           lastMessageId={
